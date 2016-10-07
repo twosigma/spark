@@ -40,12 +40,13 @@ TACHYON_URL="http://tachyon-project.org/downloads/files/${TACHYON_VERSION}/${TAC
 MAKE_TGZ=false
 NAME=none
 MVN="$SPARK_HOME/build/mvn"
+SCALA_VERSION=none
 
 function exit_with_usage {
   echo "make-distribution.sh - tool for making binary distributions of Spark"
   echo ""
   echo "usage:"
-  cl_options="[--name] [--tgz] [--mvn <mvn-command>] [--with-tachyon]"
+  cl_options="[--name] [--tgz] [--mvn <mvn-command>] [--with-tachyon] [--scala-version <2.10|2.11>]"
   echo "./make-distribution.sh $cl_options <maven build options>"
   echo "See Spark's \"Building Spark\" doc for correct Maven options."
   echo ""
@@ -80,6 +81,10 @@ while (( "$#" )); do
       ;;
     --mvn)
       MVN="$2"
+      shift
+      ;;
+    --scala-version)
+      SCALA_VERSION="$2"
       shift
       ;;
     --name)
@@ -120,14 +125,19 @@ if [ $(command -v git) ]; then
     unset GITREV
 fi
 
-
 if [ ! "$(command -v "$MVN")" ] ; then
     echo -e "Could not locate Maven command: '$MVN'."
     echo -e "Specify the Maven command with the --mvn flag"
     exit -1;
 fi
 
+if [ "$SCALA_VERSION" != "none" ]; then
+    dev/change-scala-version.sh "$SCALA_VERSION"
+    set -- -Dscala-"$SCALA_VERSION" $@
+fi
+
 VERSION=$("$MVN" help:evaluate -Dexpression=project.version $@ 2>/dev/null | grep -v "INFO" | tail -n 1)
+GIT_VERSION=$(git describe --tags | cut -b2-)
 SCALA_VERSION=$("$MVN" help:evaluate -Dexpression=scala.binary.version $@ 2>/dev/null\
     | grep -v "INFO"\
     | tail -n 1)
@@ -142,13 +152,18 @@ SPARK_HIVE=$("$MVN" help:evaluate -Dexpression=project.activeProfiles -pl sql/hi
     echo -n)
 
 if [ "$NAME" == "none" ]; then
-  NAME=$SPARK_HADOOP_VERSION
+  NAME=hadoop$SPARK_HADOOP_VERSION-scala$SCALA_VERSION
+fi
+
+if [[ "${VERSION}" != "$(echo ${GIT_VERSION} | cut -d- -f1)" ]]; then
+    echo "Maven and git disagree on spark version: mvn gives ${VERSION} while git gives ${GIT_VERSION}"
+    exit -1
 fi
 
 echo "Spark version is $VERSION"
 
 if [ "$MAKE_TGZ" == "true" ]; then
-  echo "Making spark-$VERSION-bin-$NAME.tgz"
+  echo "Making spark-$GIT_VERSION-bin-$NAME.tgz"
 else
   echo "Making distribution for Spark $VERSION in $DISTDIR..."
 fi
@@ -162,12 +177,12 @@ fi
 # Build uber fat JAR
 cd "$SPARK_HOME"
 
-export MAVEN_OPTS="${MAVEN_OPTS:--Xmx2g -XX:MaxPermSize=512M -XX:ReservedCodeCacheSize=512m}"
+export MAVEN_OPTS="${MAVEN_OPTS:--Xmx5g -XX:MaxPermSize=512M -XX:ReservedCodeCacheSize=512m -Dmaven.test.skip=true}"
 
 # Store the command as an array because $MVN variable might have spaces in it.
 # Normal quoting tricks don't work.
 # See: http://mywiki.wooledge.org/BashFAQ/050
-BUILD_COMMAND=("$MVN" clean package -DskipTests $@)
+BUILD_COMMAND=("$MVN" -T 30 clean package -DskipTests $@)
 
 # Actually build the jar
 echo -e "\nBuilding with..."
@@ -210,7 +225,7 @@ cp -r "$SPARK_HOME/data" "$DISTDIR"
 
 # Copy other things
 mkdir "$DISTDIR"/conf
-cp "$SPARK_HOME"/conf/*.template "$DISTDIR"/conf
+cp "$SPARK_HOME"/conf/* "$DISTDIR"/conf
 cp "$SPARK_HOME/README.md" "$DISTDIR"
 cp -r "$SPARK_HOME/bin" "$DISTDIR"
 cp -r "$SPARK_HOME/python" "$DISTDIR"
@@ -258,10 +273,10 @@ if [ "$SPARK_TACHYON" == "true" ]; then
 fi
 
 if [ "$MAKE_TGZ" == "true" ]; then
-  TARDIR_NAME=spark-$VERSION-bin-$NAME
+  TARDIR_NAME=spark-$GIT_VERSION-bin-$NAME
   TARDIR="$SPARK_HOME/$TARDIR_NAME"
   rm -rf "$TARDIR"
   cp -r "$DISTDIR" "$TARDIR"
-  tar czf "spark-$VERSION-bin-$NAME.tgz" -C "$SPARK_HOME" "$TARDIR_NAME"
+  tar czf "spark-$GIT_VERSION-bin-$NAME.tgz" -C "$SPARK_HOME" "$TARDIR_NAME"
   rm -rf "$TARDIR"
 fi

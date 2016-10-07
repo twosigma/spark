@@ -131,16 +131,19 @@ private[spark] abstract class WebUI(
 
   /** Bind to the HTTP server behind this web interface. */
   def bind() {
-    assert(!serverInfo.isDefined, "Attempted to bind %s more than once!".format(className))
+    assert(!serverInfo.isDefined, s"Attempted to bind $className more than once!")
     try {
       serverInfo = Some(startJettyServer("0.0.0.0", port, handlers, conf, name))
-      logInfo("Started %s at http://%s:%d".format(className, publicHostName, boundPort))
+      logInfo(s"Started $className at $webUrl")
     } catch {
       case e: Exception =>
-        logError("Failed to bind %s".format(className), e)
+        logError(s"Failed to bind $className", e)
         System.exit(1)
     }
   }
+
+  /** Return the url of web interface. Only valid after bind(). */
+  def webUrl: String = s"http://$publicHostName:$boundPort"
 
   /** Return the actual port to which this server is bound. Only valid after bind(). */
   def boundPort: Int = serverInfo.map(_.boundPort).getOrElse(-1)
@@ -148,7 +151,7 @@ private[spark] abstract class WebUI(
   /** Stop the server behind this web interface. Only valid after bind(). */
   def stop() {
     assert(serverInfo.isDefined,
-      "Attempted to stop %s before binding to a server!".format(className))
+      s"Attempted to stop $className before binding to a server!")
     serverInfo.get.server.stop()
   }
 }
