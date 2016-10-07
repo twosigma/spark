@@ -128,7 +128,11 @@
     <slf4j.version>1.7.10</slf4j.version>
     <log4j.version>1.2.17</log4j.version>
     <hadoop.version>2.2.0</hadoop.version>
-    <protobuf.version>2.5.0</protobuf.version>
+    <!-- riemann-java-client needs 2.6.1 or it fails to load ProtocolStringList.
+         Stock spark has 2.5.0 here for reasons they outline below (search for
+         "In theory we need not directly depend on protobuf") but we bump it
+         further to use riemann. -->
+    <protobuf.version>2.6.1</protobuf.version>
     <yarn.version>${hadoop.version}</yarn.version>
     <hbase.version>0.98.7-hadoop2</hbase.version>
     <hbase.artifact>hbase</hbase.artifact>
@@ -227,6 +231,20 @@
       </snapshots>
     </repository>
     <repository>
+      <id>typesafe</id>
+      <!-- This repo should be near the top; it is the location for the
+           patched version of the Scala REPL for 2.11. This is a temporary
+           fix until scala 2.11.9 is released. -->
+      <name>Typesafe Special Build Repository</name>
+      <url>https://scala-ci.typesafe.com/artifactory/scala-release-private/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
       <id>apache-repo</id>
       <name>Apache Repository</name>
       <url>https://repository.apache.org/content/repositories/releases</url>
@@ -306,6 +324,18 @@
       <id>twttr-repo</id>
       <name>Twttr Repository</name>
       <url>http://maven.twttr.com</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <!-- For metrics3-riemann-reporter -->
+    <repository>
+      <id>clojars</id>
+      <name>Clojars</name>
+      <url>http://clojars.org/repo</url>
       <releases>
         <enabled>true</enabled>
       </releases>
@@ -595,7 +625,6 @@
         <groupId>com.google.protobuf</groupId>
         <artifactId>protobuf-java</artifactId>
         <version>${protobuf.version}</version>
-        <scope>${hadoop.deps.scope}</scope>
       </dependency>
       <dependency>
         <groupId>${akka.group}</groupId>
@@ -2571,7 +2600,7 @@
         <property><name>scala-2.11</name></property>
       </activation>
       <properties>
-        <scala.version>2.11.7</scala.version>
+        <scala.version>2.11.7-2</scala.version>
         <scala.binary.version>2.11</scala.binary.version>
       </properties>
     </profile>
