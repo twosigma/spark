@@ -118,7 +118,11 @@
     <slf4j.version>1.7.16</slf4j.version>
     <log4j.version>1.2.17</log4j.version>
     <hadoop.version>2.6.5</hadoop.version>
-    <protobuf.version>2.5.0</protobuf.version>
+    <!-- riemann-java-client needs 2.6.1 or it fails to load ProtocolStringList.
+         Stock spark has 2.5.0 here for reasons they outline below (search for
+         "In theory we need not directly depend on protobuf") but we bump it
+         further to use riemann. -->
+    <protobuf.version>2.6.1</protobuf.version>
     <yarn.version>${hadoop.version}</yarn.version>
     <flume.version>1.6.0</flume.version>
     <zookeeper.version>3.4.6</zookeeper.version>
@@ -233,6 +237,119 @@
       <!-- This should be at top, it makes maven try the central repo first and then others and hence faster dep resolution -->
       <name>Maven Repository</name>
       <url>https://repo.maven.apache.org/maven2</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>typesafe</id>
+      <!-- This repo should be near the top; it is the location for the
+           patched version of the Scala REPL for 2.11. This is a temporary
+           fix until scala 2.11.9 is released. -->
+      <name>Typesafe Special Build Repository</name>
+      <url>https://scala-ci.typesafe.com/artifactory/scala-release-private/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>apache-repo</id>
+      <name>Apache Repository</name>
+      <url>https://repository.apache.org/content/repositories/releases</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>jboss-repo</id>
+      <name>JBoss Repository</name>
+      <url>https://repository.jboss.org/nexus/content/repositories/releases</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>mqtt-repo</id>
+      <name>MQTT Repository</name>
+      <url>https://repo.eclipse.org/content/repositories/paho-releases</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>cloudera-repo</id>
+      <name>Cloudera Repository</name>
+      <url>https://repository.cloudera.com/artifactory/cloudera-repos</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>spark-hive-staging</id>
+      <name>Staging Repo for Hive 1.2.1 (Spark Version)</name>
+      <url>https://oss.sonatype.org/content/repositories/orgspark-project-1113</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+    </repository>
+    <repository>
+      <id>mapr-repo</id>
+      <name>MapR Repository</name>
+      <url>http://repository.mapr.com/maven/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <!-- returning unauthorized on some operations -->
+    <repository>
+      <id>spring-releases</id>
+      <name>Spring Release Repository</name>
+      <url>https://repo.spring.io/libs-release</url>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <!-- For transitive dependencies brougt by parquet-thrift -->
+    <repository>
+      <id>twttr-repo</id>
+      <name>Twttr Repository</name>
+      <url>http://maven.twttr.com</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <!-- For metrics3-riemann-reporter -->
+    <repository>
+      <id>clojars</id>
+      <name>Clojars</name>
+      <url>http://clojars.org/repo</url>
       <releases>
         <enabled>true</enabled>
       </releases>
@@ -569,7 +686,6 @@
         <groupId>com.google.protobuf</groupId>
         <artifactId>protobuf-java</artifactId>
         <version>${protobuf.version}</version>
-        <scope>${hadoop.deps.scope}</scope>
       </dependency>
       <dependency>
         <groupId>org.roaringbitmap</groupId>

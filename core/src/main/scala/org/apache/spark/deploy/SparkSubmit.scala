@@ -77,7 +77,8 @@ object SparkSubmit extends CommandLineUtils with Logging {
   private val MESOS = 4
   private val LOCAL = 8
   private val KUBERNETES = 16
-  private val ALL_CLUSTER_MGRS = YARN | STANDALONE | MESOS | LOCAL | KUBERNETES
+  private val COOK = 32 
+  private val ALL_CLUSTER_MGRS = YARN | STANDALONE | MESOS | COOK | LOCAL | KUBERNETES
 
   // Deploy modes
   private val CLIENT = 1
@@ -262,9 +263,10 @@ object SparkSubmit extends CommandLineUtils with Logging {
       case m if m.startsWith("mesos") => MESOS
       case m if m.startsWith("k8s") => KUBERNETES
       case m if m.startsWith("local") => LOCAL
+      case m if m.startsWith("cook") => COOK
       case _ =>
-        printErrorAndExit("Master must either be yarn or start with spark, mesos, k8s, or local")
-        -1
+        printErrorAndExit("Master must either be yarn or start with spark, mesos, cook, " +
+          "k8s, or local"); -1
     }
 
     // Set the deploy mode; default is client mode
@@ -580,17 +582,17 @@ object SparkSubmit extends CommandLineUtils with Logging {
       // Other options
       OptionAssigner(args.executorCores, STANDALONE | YARN | KUBERNETES, ALL_DEPLOY_MODES,
         confKey = "spark.executor.cores"),
-      OptionAssigner(args.executorMemory, STANDALONE | MESOS | YARN | KUBERNETES, ALL_DEPLOY_MODES,
-        confKey = "spark.executor.memory"),
+      OptionAssigner(args.executorMemory, STANDALONE | MESOS | COOK | YARN | KUBERNETES, 
+        ALL_DEPLOY_MODES, confKey = "spark.executor.memory"),
       OptionAssigner(args.totalExecutorCores, STANDALONE | MESOS | KUBERNETES, ALL_DEPLOY_MODES,
         confKey = "spark.cores.max"),
-      OptionAssigner(args.files, LOCAL | STANDALONE | MESOS | KUBERNETES, ALL_DEPLOY_MODES,
-        confKey = "spark.files"),
+      OptionAssigner(args.files, LOCAL | STANDALONE | MESOS | COOK | KUBERNETES,
+        ALL_DEPLOY_MODES, confKey = "spark.files"),
       OptionAssigner(args.jars, LOCAL, CLIENT, confKey = "spark.jars"),
       OptionAssigner(args.jars, STANDALONE | MESOS | KUBERNETES, ALL_DEPLOY_MODES,
         confKey = "spark.jars"),
-      OptionAssigner(args.driverMemory, STANDALONE | MESOS | YARN | KUBERNETES, CLUSTER,
-        confKey = "spark.driver.memory"),
+      OptionAssigner(args.driverMemory, STANDALONE | MESOS | YARN | COOK | KUBERNETES, 
+        CLUSTER, confKey = "spark.driver.memory"),
       OptionAssigner(args.driverCores, STANDALONE | MESOS | YARN | KUBERNETES, CLUSTER,
         confKey = "spark.driver.cores"),
       OptionAssigner(args.supervise.toString, STANDALONE | MESOS, CLUSTER,
