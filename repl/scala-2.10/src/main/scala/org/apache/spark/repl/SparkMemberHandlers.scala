@@ -59,7 +59,7 @@ private[repl] trait SparkMemberHandlers {
   def chooseHandler(member: Tree): MemberHandler = member match {
     case member: DefDef        => new DefHandler(member)
     case member: ValDef        => new ValHandler(member)
-    case member: Assign        => new AssignHandler(member)
+    //case member: Assign        => new AssignHandler(member)
     case member: ModuleDef     => new ModuleHandler(member)
     case member: ClassDef      => new ClassHandler(member)
     case member: TypeDef       => new TypeAliasHandler(member)
