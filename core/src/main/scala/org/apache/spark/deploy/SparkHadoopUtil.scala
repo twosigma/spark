@@ -61,9 +61,25 @@ class SparkHadoopUtil extends Logging {
    * do a FileSystem.closeAllForUGI in order to avoid leaking Filesystems
    */
   def runAsSparkUser(func: () => Unit) {
-    createSparkUser().doAs(new PrivilegedExceptionAction[Unit] {
-      def run: Unit = func()
-    })
+    // In most mesos deployments, the executors will be run as some mesos
+    // user, not as the same user taht the command is being run by locally.
+    // In this case, we do a shallow impersonation but without authentication
+    // (since the principal is different). It is possible, however, to set up
+    // mesos so that it will run your the executors as the user and with the
+    // user's principal. In this case, this shallow impersonation will not work
+    // (if you are using kerberized hadoop, for example), but it is no longer
+    // necessary to do any impersonation at all, as the command is run
+    // with the proper user and credentiatials
+    val key = "IMPERSONATE_USER"
+    val v = System.getenv(key)
+    if (v == null || v.isEmpty) {
+      createSparkUser().doAs(new PrivilegedExceptionAction[Unit] {
+        def run: Unit = func()
+      })
+    } else {
+      logDebug(s"$key is set. Not attempting to impersonate user")
+      func()
+    }
   }
 
   def createSparkUser(): UserGroupInformation = {
