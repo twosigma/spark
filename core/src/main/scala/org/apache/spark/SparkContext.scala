@@ -829,8 +829,11 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
       path: String,
       minPartitions: Int = defaultMinPartitions): RDD[String] = withScope {
     assertNotStopped()
-    hadoopFile(path, classOf[TextInputFormat], classOf[LongWritable], classOf[Text],
-      minPartitions).map(pair => pair._2.toString).setName(path)
+    // NOTE that this is a patched version of text file to work with kerberized hadoop
+    val jobConf = new JobConf(hadoopConfiguration)
+    FileInputFormat.setInputPaths(jobConf, path)
+    hadoopRDD(jobConf, classOf[TextInputFormat], classOf[LongWritable], classOf[Text],
+      minPartitions).map(_._2.toString).setName(path)
   }
 
   /**
@@ -2604,6 +2607,13 @@ object SparkContext extends Logging {
         scheduler.initialize(backend)
         (backend, scheduler)
 
+      case COOK_REGEX(hostname, port) =>
+        val scheduler = new TaskSchedulerImpl(sc)
+        val backend = CoarseCookSchedulerBackend(scheduler, sc, hostname, port.toInt)
+        scheduler.initialize(backend)
+        (backend, scheduler)
+
+
       case LOCAL_N_REGEX(threads) =>
         def localCpuCount: Int = Runtime.getRuntime.availableProcessors()
         // local[*] estimates the number of cores on the machine; local[N] uses exactly N threads.
@@ -2753,6 +2763,8 @@ private object SparkMasterRegex {
   val MESOS_REGEX = """mesos://(.*)""".r
   // Regular expression for connection to Simr cluster
   val SIMR_REGEX = """simr://(.*)""".r
+  // Regular expression for connection to Cook Scheduler
+  val COOK_REGEX = """cook://(.*):([0-9]+)""".r
 }
 
 /**

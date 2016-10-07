@@ -67,7 +67,8 @@ object SparkSubmit {
   private val STANDALONE = 2
   private val MESOS = 4
   private val LOCAL = 8
-  private val ALL_CLUSTER_MGRS = YARN | STANDALONE | MESOS | LOCAL
+  private val COOK = 16
+  private val ALL_CLUSTER_MGRS = YARN | STANDALONE | MESOS | COOK | LOCAL
 
   // Deploy modes
   private val CLIENT = 1
@@ -230,7 +231,10 @@ object SparkSubmit {
       case m if m.startsWith("spark") => STANDALONE
       case m if m.startsWith("mesos") => MESOS
       case m if m.startsWith("local") => LOCAL
-      case _ => printErrorAndExit("Master must start with yarn, spark, mesos, or local"); -1
+      case m if m.startsWith("cook") => COOK
+      case _ =>
+        printErrorAndExit("Master must start with yarn, spark, mesos, cook, persistent-cook or " +
+          "local"); -1
     }
 
     // Set the deploy mode; default is client mode
@@ -472,14 +476,14 @@ object SparkSubmit {
       // Other options
       OptionAssigner(args.executorCores, STANDALONE | YARN, ALL_DEPLOY_MODES,
         sysProp = "spark.executor.cores"),
-      OptionAssigner(args.executorMemory, STANDALONE | MESOS | YARN, ALL_DEPLOY_MODES,
+      OptionAssigner(args.executorMemory, STANDALONE | MESOS | COOK | YARN, ALL_DEPLOY_MODES,
         sysProp = "spark.executor.memory"),
       OptionAssigner(args.totalExecutorCores, STANDALONE | MESOS, ALL_DEPLOY_MODES,
         sysProp = "spark.cores.max"),
-      OptionAssigner(args.files, LOCAL | STANDALONE | MESOS, ALL_DEPLOY_MODES,
+      OptionAssigner(args.files, LOCAL | STANDALONE | MESOS | COOK, ALL_DEPLOY_MODES,
         sysProp = "spark.files"),
       OptionAssigner(args.jars, STANDALONE | MESOS, CLUSTER, sysProp = "spark.jars"),
-      OptionAssigner(args.driverMemory, STANDALONE | MESOS, CLUSTER,
+      OptionAssigner(args.driverMemory, STANDALONE | MESOS | COOK, CLUSTER,
         sysProp = "spark.driver.memory"),
       OptionAssigner(args.driverCores, STANDALONE | MESOS, CLUSTER,
         sysProp = "spark.driver.cores"),
