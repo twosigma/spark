@@ -1,3 +1,41 @@
+# Two Sigma
+
+In order to build this package, you need to build and install `cook jobclient` first.
+
+```
+# Check out cook jobclient and install to local m2 repository
+git clone https://github.com/twosigma/Cook.git
+cd Cook/jobclient
+mvn package
+mvn org.apache.maven.plugins:maven-install-plugin:2.5.2:install-file -Dfile=target/cook-jobclient-0.1.0.jar -DpomFile=pom.xml
+
+Now, we are ready to build the Spark distribution as follows.
+
+```
+# Install package to local m2 repository
+build/mvn install -DskipTests=true -Dscala-2.11 -Phadoop-2.6 -Dhadoop.version=2.6.0-cdh5.4.4jco
+
+# Build jar for release without hive support
+./make-distribution.sh --tgz --skip-java-test --scala-version 2.11 -Phadoop-2.6 -Dhadoop.version=2.6.0-cdh5.4.4jco
+
+# Build jar for release with hive support
+./make-distribution.sh --tgz --skip-java-test --scala-version 2.11 -Phive -Phive-thriftserver -Phadoop-2.6 -Dhadoop.version=2.6.0-cdh5.4.4jco
+```
+
+The tarball will be created with the hadoop version and scala version
+embedded in the tarball name.  Additionally, we use `git describe
+--tags` to create the spark version, rather than just taking what's in
+the pom.xml files.  This way, we get a tarball name that looks like
+
+    spark-1.6.1-31-g9dc4df0-bin-hadoop2.6.0-cdh5.4.4jco-scala2.10.tgz
+
+rather than
+
+    spark-1.6.1-bin-2.6.0-cdh5.4.4jco.tgz
+
+and thus we can manage multiple internal releases on the same upstream
+version, and also manage our scala version dependencies appropriately.
+
 # Apache Spark
 
 Spark is a fast and general cluster computing system for Big Data. It provides
