@@ -21,14 +21,12 @@ import java.io.{BufferedWriter, File, FileWriter, PrintWriter}
 import java.lang.Thread.UncaughtExceptionHandler
 import java.net.{InetAddress, ServerSocket, URI}
 import java.nio.file.{Files, Paths}
-import java.nio.file.attribute.PosixFilePermissions
 import java.util.UUID
 import java.util.concurrent.{ConcurrentHashMap, Executors, ScheduledExecutorService, TimeUnit}
 
 import scala.concurrent.{Await, Future, Promise}
 import scala.concurrent.duration._
 import scala.collection.JavaConverters._
-import scala.sys.process.{BasicIO, Process, ProcessLogger}
 import scala.util.{Failure, Success, Try}
 import org.apache.mesos._
 import org.apache.mesos.Protos._
@@ -65,146 +63,7 @@ object CoarseCookSchedulerBackend {
   }
 }
 
-private[spark] class RsyncServer(rsyncDir: String, rsyncExportDirs: Option[String])
-  extends Logging
-{
-  private[this] val currentUsername = sys.props.get("user.name").getOrElse("nobody")
-  private[this] val currentHostname = java.net.InetAddress.getLocalHost.getHostName
-  val hostname = s"$currentUsername.$currentHostname"
 
-  private[this] val rsyncConf = s"""
-[spark]
-     path = $rsyncDir
-     use chroot = no
-     reverse lookup = no
-     read only = yes
-""" + rsyncExportDirs.fold("") { exportDir =>
-      s"""
-[${exportDir.split("/").last}]
-     path = $exportDir
-     use chroot = no
-     reverse lookup = no
-     read only = yes
-"""
-    }
-
-  private[this] val rsyncConfFile: File = {
-    val tmpFile = File.createTempFile("spark-rsync", ".tmp")
-    tmpFile.deleteOnExit()
-    new PrintWriter(tmpFile) {
-      write(rsyncConf)
-      close()
-    }
-    logDebug(s"Created rsync conf at ${tmpFile.getAbsolutePath}")
-    tmpFile
-  }
-
-  private[this] val kncShellFile = {
-    // Create a shell script that will be executed by KNC
-    // that verifies that the user is the only one allowed to connect
-    // to the listening port.
-    //
-    // It is simpler to do this here than inline with all of the shell escaping
-    // since the connection will be setup be: socat -> knc -> bash -> rsync
-    //
-    // socat is used to listen on a TCP port (the reason why socat is used is
-    // that is outputs the port number it is listening on to stderr, knc doesn't
-    // do that.
-    //
-    // knc is used to establish authentication
-    //
-    // bash is used to check that the supplied Kerberos credential matches
-    // the expected user's credential
-    //
-    // rsync is used to synchronize the data
-    val tmpFile = File.createTempFile("knc-spark-rsync", ".tmp")
-    tmpFile.deleteOnExit()
-    Files.setPosixFilePermissions(tmpFile.toPath, PosixFilePermissions.fromString("rwx------"))
-    new PrintWriter(tmpFile) {
-      val credVariable = "$KNC_CREDS"
-      write(s"""#!/bin/sh
-case $credVariable in
-       $currentUsername@CB.TWOSIGMA.COM)
-/usr/bin/rsync --config ${rsyncConfFile.getAbsolutePath} --daemon
-;;
-       $currentUsername@N.TWOSIGMA.COM)
-/usr/bin/rsync --config ${rsyncConfFile.getAbsolutePath} --daemon
-;;
-esac""")
-      close()
-    }
-    logDebug(s"Created knc shell file at ${tmpFile.getAbsolutePath}")
-    tmpFile
-  }
-
-  private[this] val rsyncPort: Promise[Int] = Promise()
-  private[this] val rsyncProcess: Process = {
-    val keytabCommand = s"/usr/sbin/krb5_keytab spark-rsync/$currentUsername.$currentHostname"
-    val keytabResult = Process(keytabCommand).!
-
-    if (keytabResult != 0) {
-      throw new Exception("Unable to create Kerberos keytab for " +
-        s"spark-rsync/$currentUsername.$currentHostname")
-    }
-
-    // socat will output a line to stderr that tells us where it is listening
-    // we'll parse the port number out of that line with a regular expression
-    val listenerPattern = ".*listening on AF=[0-9]+ .+:([0-9]+)".r
-
-    // This is the ProcessLogger that will listen to the lines written
-    // by socat to stderr and stdout, stdout lines are discarded.
-    val logger = ProcessLogger(
-      line => logDebug(s"Ignoring socat output line: $line"),
-      line => {
-        logDebug(s"Attempting to parse socat line: $line")
-        line match {
-          case listenerPattern(portNumber) =>
-            if (!rsyncPort.isCompleted) {
-              rsyncPort.success(portNumber.toInt)
-            } else {
-              logDebug("Ignoring socat output line since port is already set")
-            }
-          case _ => logDebug(s"Ignoring socat output line: $line")
-        }
-      }
-    )
-    val io = BasicIO(withIn = false, logger).daemonized
-
-    val proc = Process(
-      Seq(
-        "/usr/bin/socat",
-        "-d", "-d",
-        "TCP-LISTEN:0,fork",
-        "EXEC:\"/usr/bin/knc -il " + kncShellFile.getAbsolutePath + "\""
-      ),
-      None,
-      "KRB5_KTNAME" -> s"/var/spool/keytabs/$currentUsername").run(io)
-    logDebug(s"Started rsync process")
-    proc
-  }
-
-  val port: Future[Int] = rsyncPort.future
-
-  private[this] var stopped = false
-
-  def stop() {
-    this.synchronized {
-      if (!stopped) {
-        logDebug("Stopping rsync process")
-        Try(rsyncProcess.destroy()).recover {
-          case exc => logWarning(s"Error stopping rsync: $exc")
-        }
-        stopped = true
-      }
-    }
-  }
-
-  // Cleanup the rsync listener upon termination if necessary.
-  sys.addShutdownHook {
-    logDebug("In shutdown hook, calling stop")
-    stop()
-  }
-}
 
 /**
  * A SchedulerBackend that runs tasks using Cook, using "coarse-grained" tasks, where it holds
@@ -221,15 +80,19 @@ class CoarseCookSchedulerBackend(
     extends CoarseGrainedSchedulerBackend(scheduler, sc.env.rpcEnv) with Logging {
 
   val maxCores = conf.getInt("spark.cores.max", 0)
-  val maxCoresPerJob = conf.getInt("spark.cook.cores.per.job.max", 5)
+  val maxCoresPerJob = conf.getInt("spark.executor.cores", 1)
   val priority = conf.getInt("spark.cook.priority", 75)
   val jobNamePrefix = conf.get("spark.cook.job.name.prefix", "sparkjob")
   val maxFailures = conf.getInt("spark.executor.failures", 5)
 
-  def currentCoresToRequest: Int = executorsToRequest.map(_ * maxCoresPerJob)
-    .getOrElse(maxCores) - totalCoresRequested
+  if (conf.contains("spark.cores.max") && conf.getBoolean("spark.dynamicAllocation.enabled", false)) {
+    throw new IllegalArgumentException("spark.cores.max cannot be set when dynamic allocation is enabled."
+      +" Use spark.dynamicAllocation.maxExecutors instead")
+  }
+
+  def currentInstancesToRequest: Int = executorsToRequest.getOrElse(maxCores / maxCoresPerJob)
   var executorsToRequest: Option[Int] = None
-  var totalCoresRequested = 0
+  var totalInstancesRequested = 0
   var totalFailures = 0
   val jobIds = mutable.Set[UUID]()
   val abortedJobIds = mutable.Set[UUID]()
@@ -250,7 +113,7 @@ class CoarseCookSchedulerBackend(
       val isAborted = abortedJobIds.contains(job.getUUID)
 
       if (isCompleted) {
-        totalCoresRequested -= job.getCpus.toInt
+        totalInstancesRequested -= job.getCpus.toInt
         abortedJobIds -= job.getUUID
         jobIds -= job.getUUID
 
@@ -500,7 +363,7 @@ class CoarseCookSchedulerBackend(
   override def doRequestTotalExecutors(requestedTotal: Int): Boolean = {
     logInfo(s"Setting total amount of executors to request to $requestedTotal")
     executorsToRequest = Some(requestedTotal)
-    requestRemainingCores()
+    requestRemainingInstances()
     true
   }
 
@@ -512,25 +375,23 @@ class CoarseCookSchedulerBackend(
    */
   private[this] def createRemainingJobs(): List[Job] = {
     @annotation.tailrec
-    def loop(coresRemaining: Double, jobs: List[Job]): List[Job] =
-      if (coresRemaining <= 0) jobs
-      else if (coresRemaining <= maxCoresPerJob) createJob(coresRemaining) :: jobs
-      else loop(coresRemaining - maxCoresPerJob, createJob(maxCoresPerJob) :: jobs)
-    loop(currentCoresToRequest, Nil).reverse
+    def loop(instancesRemaining: Double, jobs: List[Job]): List[Job] =
+      if (instancesRemaining <= 0) jobs
+      else loop(instancesRemaining - 1, createJob(maxCoresPerJob) :: jobs)
+    loop(currentInstancesToRequest, Nil).reverse
   }
 
   /**
    * Request cores from Cook via cook jobs.
    */
-  private[this] def requestRemainingCores(): Unit = {
+  private[this] def requestRemainingInstances(): Unit = {
     val jobs = createRemainingJobs()
     if (jobs.nonEmpty) {
       Try[Unit](jobClient.submit(jobs.asJava)) match {
-        case Failure(e) => logWarning("Can't request more cores", e)
+        case Failure(e) => logWarning("Can't request more instances", e)
         case Success(_) => {
-          val c = jobs.map(_.getCpus.toInt).sum
-          logInfo(s"Successfully requested ${c} cores")
-          totalCoresRequested += c
+          logInfo(s"Successfully requested ${jobs.size} instances")
+          totalInstancesRequested += jobs.size
           jobs.map(_.getUUID).foreach(jobIds.add)
         }
       }
@@ -553,9 +414,9 @@ class CoarseCookSchedulerBackend(
   override def start(): Unit = {
     super.start()
 
-    requestRemainingCores()
+    requestRemainingInstances()
     resourceManagerService.scheduleAtFixedRate(new Runnable() {
-      override def run(): Unit = requestRemainingCores()
+      override def run(): Unit = requestRemainingInstances()
     }, 10, 10, TimeUnit.SECONDS)
   }
 
