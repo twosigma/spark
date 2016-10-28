@@ -17,31 +17,28 @@
 
 package org.apache.spark.scheduler
 
-import java.io.{ BufferedWriter, FileWriter, PrintWriter, File }
+import java.io.{BufferedWriter, File, FileWriter, PrintWriter}
 import java.lang.Thread.UncaughtExceptionHandler
-import java.net.{ InetAddress, ServerSocket, URI }
-import java.nio.file.{ Files, Paths }
-import java.nio.file.attribute.PosixFilePermissions
+import java.net.{InetAddress, ServerSocket, URI}
+import java.nio.file.{Files, Paths}
 import java.util.UUID
-import java.util.concurrent.{ ConcurrentHashMap, Executors, ScheduledExecutorService, TimeUnit }
+import java.util.concurrent.{ConcurrentHashMap, Executors, ScheduledExecutorService, TimeUnit}
 
-import scala.concurrent.{ Await, Future, Promise }
+import scala.concurrent.{Await, Future, Promise}
 import scala.concurrent.duration._
 import scala.collection.JavaConverters._
-import scala.sys.process.{ BasicIO, Process, ProcessLogger }
-import scala.util.{Try, Success, Failure}
-
+import scala.util.{Failure, Success, Try}
 import org.apache.mesos._
 import org.apache.mesos.Protos._
-
-import org.apache.spark.{ Logging, SparkContext, SparkConf }
+import org.apache.spark.{Logging, SparkConf, SparkContext}
 import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend
 import org.apache.spark.scheduler.cluster.mesos.CoarseMesosSchedulerBackend
-
 import org.json.JSONObject
-
 import com.google.common.util.concurrent.ThreadFactoryBuilder
-import com.twosigma.cook.jobclient.{ Job, JobClient, JobListener => CJobListener }
+import com.twosigma.cook.jobclient.{Job, JobClient, JobListener => CJobListener}
+import org.apache.spark.rpc.RpcAddress
+
+import scala.collection.mutable
 
 object CoarseCookSchedulerBackend {
   def fetchUri(uri: String): String =
@@ -62,182 +59,11 @@ object CoarseCookSchedulerBackend {
 
   def apply(scheduler: TaskSchedulerImpl, sc: SparkContext, cookHost: String,
     cookPort: Int): CoarseGrainedSchedulerBackend = {
-    val resourceManager = NaiveCookResourceManager(sc.conf, cookHost, cookPort)
-    new CoarseCookSchedulerBackend(scheduler, sc, resourceManager)
+    new CoarseCookSchedulerBackend(scheduler, sc, cookHost, cookPort)
   }
 }
 
-sealed trait CookResourceManager {
-  /**
-   * The number of cores successfully requested from this manager. It will increase whenever it
-   * receives requests and decrease if the corresponding job failed. The client of
-   * [[CookResourceManager]] could use this attribute to determine if resources are sufficient and
-   * thus needs to send more requests.
-   *
-   * @return the number of cores successfully requested from this manager.
-   */
-  def requestedCores: Int
 
-  /**
-   * Start and initialize this resource manager. This will be invoked at
-   * {{{CookSchedulerBackend.start}}}.
-   */
-  def start(): Unit
-
-  /**
-   * Stop and clean up this resource manager. This will be invoked at
-   * {{{CookSchedulerBackend.stop}}}.
-   */
-  def stop(): Unit
-
-  /**
-   * Request resources via Cook jobs.
-   *
-   * @return the number of cores successfully requested if there is no exception.
-   */
-  def request(jobs: List[Job]): Try[Int]
-}
-
-private[spark] class RsyncServer(rsyncDir: String, rsyncExportDirs: Option[String])
-  extends Logging
-{
-  private[this] val currentUsername = sys.props.get("user.name").getOrElse("nobody")
-  private[this] val currentHostname = java.net.InetAddress.getLocalHost.getHostName
-  val hostname = s"$currentUsername.$currentHostname"
-
-  private[this] val rsyncConf = s"""
-[spark]
-     path = $rsyncDir
-     use chroot = no
-     reverse lookup = no
-     read only = yes
-""" + rsyncExportDirs.fold("") { exportDir =>
-      s"""
-[${exportDir.split("/").last}]
-     path = $exportDir
-     use chroot = no
-     reverse lookup = no
-     read only = yes
-"""
-    }
-
-  private[this] val rsyncConfFile: File = {
-    val tmpFile = File.createTempFile("spark-rsync", ".tmp")
-    tmpFile.deleteOnExit()
-    new PrintWriter(tmpFile) {
-      write(rsyncConf)
-      close()
-    }
-    logDebug(s"Created rsync conf at ${tmpFile.getAbsolutePath}")
-    tmpFile
-  }
-
-  private[this] val kncShellFile = {
-    // Create a shell script that will be executed by KNC
-    // that verifies that the user is the only one allowed to connect
-    // to the listening port.
-    //
-    // It is simpler to do this here than inline with all of the shell escaping
-    // since the connection will be setup be: socat -> knc -> bash -> rsync
-    //
-    // socat is used to listen on a TCP port (the reason why socat is used is
-    // that is outputs the port number it is listening on to stderr, knc doesn't
-    // do that.
-    //
-    // knc is used to establish authentication
-    //
-    // bash is used to check that the supplied Kerberos credential matches
-    // the expected user's credential
-    //
-    // rsync is used to synchronize the data
-    val tmpFile = File.createTempFile("knc-spark-rsync", ".tmp")
-    tmpFile.deleteOnExit()
-    Files.setPosixFilePermissions(tmpFile.toPath, PosixFilePermissions.fromString("rwx------"))
-    new PrintWriter(tmpFile) {
-      val credVariable = "$KNC_CREDS"
-      write(s"""#!/bin/sh
-case $credVariable in
-       $currentUsername@CB.TWOSIGMA.COM)
-/usr/bin/rsync --config ${rsyncConfFile.getAbsolutePath} --daemon
-;;
-       $currentUsername@N.TWOSIGMA.COM)
-/usr/bin/rsync --config ${rsyncConfFile.getAbsolutePath} --daemon
-;;
-esac""")
-      close()
-    }
-    logDebug(s"Created knc shell file at ${tmpFile.getAbsolutePath}")
-    tmpFile
-  }
-
-  private[this] val rsyncPort: Promise[Int] = Promise()
-  private[this] val rsyncProcess: Process = {
-    val keytabCommand = s"/usr/sbin/krb5_keytab spark-rsync/$currentUsername.$currentHostname"
-    val keytabResult = Process(keytabCommand).!
-
-    if (keytabResult != 0) {
-      throw new Exception("Unable to create Kerberos keytab for " +
-        s"spark-rsync/$currentUsername.$currentHostname")
-    }
-
-    // socat will output a line to stderr that tells us where it is listening
-    // we'll parse the port number out of that line with a regular expression
-    val listenerPattern = ".*listening on AF=[0-9]+ .+:([0-9]+)".r
-
-    // This is the ProcessLogger that will listen to the lines written
-    // by socat to stderr and stdout, stdout lines are discarded.
-    val logger = ProcessLogger(
-      line => logDebug(s"Ignoring socat output line: $line"),
-      line => {
-        logDebug(s"Attempting to parse socat line: $line")
-        line match {
-          case listenerPattern(portNumber) =>
-            if (!rsyncPort.isCompleted) {
-              rsyncPort.success(portNumber.toInt)
-            } else {
-              logDebug("Ignoring socat output line since port is already set")
-            }
-          case _ => logDebug(s"Ignoring socat output line: $line")
-        }
-      }
-    )
-    val io = BasicIO(withIn = false, logger).daemonized
-
-    val proc = Process(
-      Seq(
-        "/usr/bin/socat",
-        "-d", "-d",
-        "TCP-LISTEN:0,fork",
-        "EXEC:\"/usr/bin/knc -il " + kncShellFile.getAbsolutePath + "\""
-      ),
-      None,
-      "KRB5_KTNAME" -> s"/var/spool/keytabs/$currentUsername").run(io)
-    logDebug(s"Started rsync process")
-    proc
-  }
-
-  val port: Future[Int] = rsyncPort.future
-
-  private[this] var stopped = false
-
-  def stop() {
-    this.synchronized {
-      if (!stopped) {
-        logDebug("Stopping rsync process")
-        Try(rsyncProcess.destroy()).recover {
-          case exc => logWarning(s"Error stopping rsync: $exc")
-        }
-        stopped = true
-      }
-    }
-  }
-
-  // Cleanup the rsync listener upon termination if necessary.
-  sys.addShutdownHook {
-    logDebug("In shutdown hook, calling stop")
-    stop()
-  }
-}
 
 /**
  * A SchedulerBackend that runs tasks using Cook, using "coarse-grained" tasks, where it holds
@@ -249,14 +75,64 @@ esac""")
 class CoarseCookSchedulerBackend(
   scheduler: TaskSchedulerImpl,
   sc: SparkContext,
-  resourceManager: CookResourceManager)
+  cookHost: String,
+  cookPort: Int)
     extends CoarseGrainedSchedulerBackend(scheduler, sc.env.rpcEnv) with Logging {
 
   val maxCores = conf.getInt("spark.cores.max", 0)
-  val maxCoresPerJob = conf.getInt("spark.cook.cores.per.job.max", 5)
+  val maxCoresPerJob = conf.getInt("spark.executor.cores", 1)
   val priority = conf.getInt("spark.cook.priority", 75)
   val jobNamePrefix = conf.get("spark.cook.job.name.prefix", "sparkjob")
+  val maxFailures = conf.getInt("spark.executor.failures", 5)
 
+  if (conf.contains("spark.cores.max") && conf.getBoolean("spark.dynamicAllocation.enabled", false)) {
+    logWarn("spark.cores.max is ignored when dynamic allocation is enabled. Use spark.dynamicAllocation.maxExecutors instead")
+  }
+
+  def currentInstancesToRequest: Int = (executorsToRequest.getOrElse(maxCores / maxCoresPerJob) - totalInstancesRequested)
+  var executorsToRequest: Option[Int] = None
+  var totalInstancesRequested = 0
+  var totalFailures = 0
+  val jobIds = mutable.Set[UUID]()
+  val abortedJobIds = mutable.Set[UUID]()
+
+  private[this] val jobClient = new JobClient.Builder()
+    .setHost(cookHost)
+    .setPort(cookPort)
+    .setEndpoint("rawscheduler")
+    .setStatusUpdateInterval(10)
+    .setBatchRequestSize(24)
+    .setKerberosAuth()
+    .build()
+
+  private[this] val jobListener = new CJobListener {
+    // These are called serially so don't need to worry about race conditions
+    def onStatusUpdate(job: Job) {
+      val isCompleted = job.getStatus == Job.Status.COMPLETED
+      val isAborted = abortedJobIds.contains(job.getUUID)
+
+      if (isCompleted) {
+        totalInstancesRequested -= job.getCpus.toInt
+        abortedJobIds -= job.getUUID
+        jobIds -= job.getUUID
+
+        if (isAborted) {
+          logInfo(s"Job ${job.getUUID} has been successfully aborted.")
+        }
+
+        if (!job.isSuccess && !isAborted) {
+          totalFailures += 1
+          logWarning(s"Job ${job.getUUID} has died. Failure ($totalFailures/$maxFailures)")
+          jobIds -= job.getUUID
+          if (totalFailures >= maxFailures) {
+            // TODO should we abort the outstanding tasks now?
+            logError(s"We have exceeded our maximum failures ($maxFailures)" +
+              "and will not relaunch any more tasks")
+          }
+        }
+      }
+    }
+  }
   def executorUUIDWriter: UUID => Unit =
     conf.getOption("spark.cook.executoruuid.log").fold { _: UUID => () } { _file =>
       def file(ct: Int) = s"${_file}.$ct"
@@ -302,7 +178,7 @@ class CoarseCookSchedulerBackend(
       .setId(OfferID.newBuilder().setValue("Cook-id"))
       .setFrameworkId(FrameworkID.newBuilder().setValue("Cook"))
       .setHostname("$(hostname)")
-      .setSlaveId(SlaveID.newBuilder().setValue(jobId.toString))
+      .setSlaveId(SlaveID.newBuilder().setValue("${MESOS_EXECUTOR_ID}"))
       .build()
     val taskId = sparkMesosScheduler.newMesosTaskId()
     val commandInfo = sparkMesosScheduler.createCommand(fakeOffer, numCores.toInt, taskId)
@@ -427,6 +303,69 @@ class CoarseCookSchedulerBackend(
     ret
   }
 
+  // In our fake offer mesos adds some autoincrementing ID per job but
+  // this sticks around in the executorId so we strop it out to get the actual executor ID
+  private def instanceIdFromExecutorId(executorId: String): UUID = {
+    UUID.fromString(executorId.split('/')(0))
+  }
+
+  override def createDriverEndpoint(properties: Seq[(String, String)]): DriverEndpoint = {
+    new DriverEndpoint(rpcEnv, properties) {
+      override def onDisconnected(remoteAddress: RpcAddress): Unit = {
+        addressToExecutorId
+          .get(remoteAddress)
+          .foreach(handleDisconnectedExecutor(_))
+      }
+
+      def handleDisconnectedExecutor(executorId: String): Unit = {
+        logInfo(s"Recieved disconnect message from executor with ID: ${executorId}")
+        // TODO: we end up querying for everything, not sure of the perf implications here
+        val allInstances = jobClient.query(jobIds.asJava).asScala.values
+          .flatMap(_.getInstances.asScala).toSeq
+        val instanceId = instanceIdFromExecutorId(executorId)
+        val correspondingInstance = allInstances.find(_.getTaskID == instanceId)
+        if (correspondingInstance.isEmpty) {
+          logWarning(s"Unable to find executorId: ${executorId} from ${allInstances}")
+        }
+        correspondingInstance.foreach(instance => {
+          val wasPreempted = instance.getPreempted
+          val exitCode = instance.getReasonCode
+          if (wasPreempted) {
+            logInfo(s"Executor ${executorId} was removed due to preemption. Marking as killed.")
+            removeExecutor(executorId, ExecutorExited(exitCode.toInt,
+              false, "Executor was preempted by the scheduler."))
+          } else {
+            removeExecutor(executorId, SlaveLost("Remote RPC client disassociated likely due to " +
+              "containers exceeding thresholds or network issues. Check driver logs for WARN " +
+              "message."))
+          }
+        })
+      }
+    }
+  }
+
+  /*
+   * Kill the given list of executors through the cluster manager.
+   * @return whether the kill request is acknowledged.
+   */
+  override def doKillExecutors(executorIds: Seq[String]): Boolean = {
+    val instancesToKill = executorIds.map(instanceIdFromExecutorId).toSet
+    val jobsToInstances = jobClient.query(jobIds.asJava).asScala.values
+      .flatMap(job => job.getInstances.asScala.map((job.getUUID, _))).toSeq
+    val correspondingJobs = jobsToInstances.filter(i => instancesToKill.contains(i._2.getTaskID))
+      .map(_._1).toSet
+    jobClient.abort(correspondingJobs.asJava)
+    correspondingJobs.foreach(abortedJobIds.add)
+    true
+  }
+
+  override def doRequestTotalExecutors(requestedTotal: Int): Boolean = {
+    logInfo(s"Setting total amount of executors to request to $requestedTotal")
+    executorsToRequest = Some(requestedTotal)
+    requestRemainingInstances()
+    true
+  }
+
   /**
    * Generate a list of jobs expected to run in Cook according to the difference of the total
    * number of requested cores so far and the desired maximum number of cores.
@@ -435,22 +374,25 @@ class CoarseCookSchedulerBackend(
    */
   private[this] def createRemainingJobs(): List[Job] = {
     @annotation.tailrec
-    def loop(coresRemaining: Double, jobs: List[Job]): List[Job] =
-      if (coresRemaining <= 0) jobs
-      else if (coresRemaining <= maxCoresPerJob) createJob(coresRemaining) :: jobs
-      else loop(coresRemaining - maxCoresPerJob, createJob(maxCoresPerJob) :: jobs)
-    loop(maxCores - resourceManager.requestedCores, Nil).reverse
+    def loop(instancesRemaining: Double, jobs: List[Job]): List[Job] =
+      if (instancesRemaining <= 0) jobs
+      else loop(instancesRemaining - 1, createJob(maxCoresPerJob) :: jobs)
+    loop(currentInstancesToRequest, Nil).reverse
   }
 
   /**
    * Request cores from Cook via cook jobs.
    */
-  private[this] def requestRemainingCores(): Unit = {
+  private[this] def requestRemainingInstances(): Unit = {
     val jobs = createRemainingJobs()
     if (jobs.nonEmpty) {
-      resourceManager.request(jobs) match {
-        case Failure(e) => logWarning("Can't request more cores", e)
-        case Success(c) => logInfo(s"Successfully request ${c} cores")
+      Try[Unit](jobClient.submit(jobs.asJava)) match {
+        case Failure(e) => logWarning("Can't request more instances", e)
+        case Success(_) => {
+          logInfo(s"Successfully requested ${jobs.size} instances")
+          totalInstancesRequested += jobs.size
+          jobs.map(_.getUUID).foreach(jobIds.add)
+        }
       }
     }
   }
@@ -471,10 +413,9 @@ class CoarseCookSchedulerBackend(
   override def start(): Unit = {
     super.start()
 
-    resourceManager.start()
-    requestRemainingCores()
+    requestRemainingInstances()
     resourceManagerService.scheduleAtFixedRate(new Runnable() {
-      override def run(): Unit = requestRemainingCores()
+      override def run(): Unit = requestRemainingInstances()
     }, 10, 10, TimeUnit.SECONDS)
   }
 
@@ -482,62 +423,8 @@ class CoarseCookSchedulerBackend(
     super.stop()
 
     rsyncServer.foreach(_.stop())
-    resourceManager.stop()
-    resourceManagerService.shutdown()
-  }
-}
-
-private[spark] case class NaiveCookResourceManager(conf: SparkConf, cookHost: String, cookPort: Int)
-    extends CookResourceManager with Logging {
-  @volatile var requestedCores = 0
-  var totalFailures = 0
-  var runningJobUUIDs = Set[UUID]()
-
-  private val maxFailures = conf.getInt("spark.executor.failures", 100)
-
-  private[this] val jobClient = new JobClient.Builder()
-    .setHost(cookHost)
-    .setPort(cookPort)
-    .setEndpoint("rawscheduler")
-    .setStatusUpdateInterval(10)
-    .setBatchRequestSize(24)
-    .setKerberosAuth()
-    .build()
-
-  private[this] val jobListener = new CJobListener {
-    // These are called serially so don't need to worry about race conditions
-    def onStatusUpdate(job: Job) {
-      if (job.getStatus == Job.Status.COMPLETED && !job.isSuccess) {
-        requestedCores -= job.getCpus.toInt
-        totalFailures += 1
-        logWarning(s"Job ${job.getUUID} has died. Failure ($totalFailures/$maxFailures)")
-        runningJobUUIDs = runningJobUUIDs - job.getUUID
-        if (totalFailures >= maxFailures) {
-          // TODO should we abort the outstanding tasks now?
-          logError(s"We have exceeded our maximum failures ($maxFailures)" +
-            "and will not relaunch any more tasks")
-        }
-      }
-    }
-  }
-
-  override def request(jobs: List[Job]): Try[Int] = if (totalFailures < maxFailures) {
-    runningJobUUIDs = runningJobUUIDs ++ jobs.map(_.getUUID)
-    Try(jobClient.submit(jobs.asJava, jobListener)).map {
-      Unit =>
-        val cores = jobs.map(_.getCpus.toInt).sum
-        requestedCores += cores
-        cores
-    }
-  } else {
-    Failure(new Exception("Cannot take more requests as the total failures exceeds " +
-      s"the maximum allowed failures specified by spark.executor.failures (${maxFailures})"))
-  }
-
-  override def start(): Unit = logInfo("Starting Cook spark scheduler")
-
-  override def stop(): Unit = {
-    jobClient.abort(runningJobUUIDs.asJava)
+    jobClient.abort(jobIds.asJava)
     jobClient.close()
+    resourceManagerService.shutdown()
   }
 }
