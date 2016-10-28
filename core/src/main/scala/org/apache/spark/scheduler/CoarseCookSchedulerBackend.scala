@@ -86,7 +86,7 @@ class CoarseCookSchedulerBackend(
   val maxFailures = conf.getInt("spark.executor.failures", 5)
 
   if (conf.contains("spark.cores.max") && conf.getBoolean("spark.dynamicAllocation.enabled", false)) {
-    logWarn("spark.cores.max is ignored when dynamic allocation is enabled. Use spark.dynamicAllocation.maxExecutors instead")
+    logWarning("spark.cores.max is ignored when dynamic allocation is enabled. Use spark.dynamicAllocation.maxExecutors instead")
   }
 
   def currentInstancesToRequest: Int = (executorsToRequest.getOrElse(maxCores / maxCoresPerJob) - totalInstancesRequested)
