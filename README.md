@@ -8,6 +8,7 @@ git clone https://github.com/twosigma/Cook.git
 cd Cook/jobclient
 mvn package
 mvn org.apache.maven.plugins:maven-install-plugin:2.5.2:install-file -Dfile=target/cook-jobclient-0.1.0.jar -DpomFile=pom.xml
+```
 
 Now, we are ready to build the Spark distribution as follows.
 
