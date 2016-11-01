@@ -1,4 +1,4 @@
-# Two Sigma
+#  Spark with Cook Support
 
 In order to build this package, you need to build and install `cook jobclient` first.
 
