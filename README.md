@@ -1,3 +1,12 @@
+# Two Sigma
+
+This repo is the Two Sigma fork of Spark.
+
+The base for this fork is the Apache Spark repository.
+
+For information related to the branches in the repo, [look here](TWOSIGMABRANCHES.md).
+**It is strongly recommended that you read this.**
+
 #  Spark with Cook Support
 
 In order to build this package, you need to build and install `cook jobclient` first.
