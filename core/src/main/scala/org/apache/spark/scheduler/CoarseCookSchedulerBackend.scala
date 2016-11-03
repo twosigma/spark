@@ -84,13 +84,18 @@ class CoarseCookSchedulerBackend(
   val priority = conf.getInt("spark.cook.priority", 75)
   val jobNamePrefix = conf.get("spark.cook.job.name.prefix", "sparkjob")
   val maxFailures = conf.getInt("spark.executor.failures", 5)
+  val dynamicAllocationEnabled = conf.getBoolean("spark.dynamicAllocation.enabled", false)
 
-  if (conf.contains("spark.cores.max") && conf.getBoolean("spark.dynamicAllocation.enabled", false)) {
+  if (conf.contains("spark.cores.max") && dynamicAllocationEnabled) {
     logWarning("spark.cores.max is ignored when dynamic allocation is enabled. Use spark.dynamicAllocation.maxExecutors instead")
   }
 
-  def currentInstancesToRequest: Int = (executorsToRequest.getOrElse(maxCores / maxCoresPerJob) - totalInstancesRequested)
-  var executorsToRequest: Option[Int] = None
+  def currentInstancesToRequest: Int = (executorsToRequest - totalInstancesRequested)
+  var executorsToRequest: Int = if (dynamicAllocationEnabled) {
+    conf.getInt("spark.dynamicAllocation.minExecutors", 0)
+  } else {
+    maxCores / maxCoresPerJob
+  }
   var totalInstancesRequested = 0
   var totalFailures = 0
   val jobIds = mutable.Set[UUID]()
@@ -112,7 +117,7 @@ class CoarseCookSchedulerBackend(
       val isAborted = abortedJobIds.contains(job.getUUID)
 
       if (isCompleted) {
-        totalInstancesRequested -= job.getCpus.toInt
+        totalInstancesRequested -= 1
         abortedJobIds -= job.getUUID
         jobIds -= job.getUUID
 
@@ -283,8 +288,7 @@ class CoarseCookSchedulerBackend(
     builder.build()
   }
 
-  private[this] val minExecutorsNecessary =
-    math.ceil(maxCores.toDouble / maxCoresPerJob) * minRegisteredRatio
+  private[this] val minExecutorsNecessary = currentInstancesToRequest * minRegisteredRatio
 
   override def sufficientResourcesRegistered(): Boolean =
     totalRegisteredExecutors.get >= minExecutorsNecessary
@@ -325,7 +329,11 @@ class CoarseCookSchedulerBackend(
         val instanceId = instanceIdFromExecutorId(executorId)
         val correspondingInstance = allInstances.find(_.getTaskID == instanceId)
         if (correspondingInstance.isEmpty) {
-          logWarning(s"Unable to find executorId: ${executorId} from ${allInstances}")
+          // This can happen in the case of an aborted executor when the Listener removes it first.
+          // We can just mark it as lost since it wouldn't be preempted anyways.
+          removeExecutor(executorId, SlaveLost("Remote RPC client disassociated likely due to " +
+            "containers exceeding thresholds or network issues. Check driver logs for WARN " +
+            "message."))
         }
         correspondingInstance.foreach(instance => {
           val wasPreempted = instance.getPreempted
@@ -361,7 +369,7 @@ class CoarseCookSchedulerBackend(
 
   override def doRequestTotalExecutors(requestedTotal: Int): Boolean = {
     logInfo(s"Setting total amount of executors to request to $requestedTotal")
-    executorsToRequest = Some(requestedTotal)
+    executorsToRequest = requestedTotal
     requestRemainingInstances()
     true
   }
@@ -386,7 +394,7 @@ class CoarseCookSchedulerBackend(
   private[this] def requestRemainingInstances(): Unit = {
     val jobs = createRemainingJobs()
     if (jobs.nonEmpty) {
-      Try[Unit](jobClient.submit(jobs.asJava)) match {
+      Try[Unit](jobClient.submit(jobs.asJava, jobListener)) match {
         case Failure(e) => logWarning("Can't request more instances", e)
         case Success(_) => {
           logInfo(s"Successfully requested ${jobs.size} instances")
