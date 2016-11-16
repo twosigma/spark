@@ -22,20 +22,21 @@ import java.lang.Thread.UncaughtExceptionHandler
 import java.net.{InetAddress, ServerSocket, URI}
 import java.nio.file.{Files, Paths}
 import java.util.UUID
-import java.util.concurrent.{ConcurrentHashMap, Executors, ScheduledExecutorService, TimeUnit}
+import java.util.concurrent.{Executors, TimeUnit}
 
-import scala.concurrent.{Await, Future, Promise}
+import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 import scala.collection.JavaConverters._
 import scala.util.{Failure, Success, Try}
 import org.apache.mesos._
 import org.apache.mesos.Protos._
-import org.apache.spark.{Logging, SparkConf, SparkContext}
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend
-import org.apache.spark.scheduler.cluster.mesos.CoarseMesosSchedulerBackend
+import org.apache.spark.scheduler.cluster.mesos.{MesosCoarseGrainedSchedulerBackend, MesosSchedulerUtils}
 import org.json.JSONObject
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import com.twosigma.cook.jobclient.{Job, JobClient, JobListener => CJobListener}
+import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcAddress
 
 import scala.collection.mutable
@@ -77,7 +78,8 @@ class CoarseCookSchedulerBackend(
   sc: SparkContext,
   cookHost: String,
   cookPort: Int)
-    extends CoarseGrainedSchedulerBackend(scheduler, sc.env.rpcEnv) with Logging {
+    extends CoarseGrainedSchedulerBackend(scheduler, sc.env.rpcEnv) with Logging
+    with MesosSchedulerUtils {
 
   val maxCores = conf.getInt("spark.cores.max", 0)
   val maxCoresPerJob = conf.getInt("spark.executor.cores", 1)
@@ -168,7 +170,7 @@ class CoarseCookSchedulerBackend(
     }
 
   val sparkMesosScheduler =
-    new CoarseMesosSchedulerBackend(scheduler, sc, "", sc.env.securityManager)
+    new MesosCoarseGrainedSchedulerBackend(scheduler, sc, "", sc.env.securityManager)
 
   override def applicationId(): String = conf.get("spark.cook.applicationId", super.applicationId())
   override def applicationAttemptId(): Option[String] = Some(applicationId())
@@ -274,7 +276,7 @@ class CoarseCookSchedulerBackend(
       .setUUID(jobId)
       .setName(jobNamePrefix)
       .setCommand(cmds.mkString("; "))
-      .setMemory(sparkMesosScheduler.calculateTotalMemory(sc).toDouble)
+      .setMemory(executorMemory(sc).toDouble)
       .setCpus(numCores)
       .setPriority(priority)
 
@@ -356,7 +358,7 @@ class CoarseCookSchedulerBackend(
    * Kill the given list of executors through the cluster manager.
    * @return whether the kill request is acknowledged.
    */
-  override def doKillExecutors(executorIds: Seq[String]): Boolean = {
+  override def doKillExecutors(executorIds: Seq[String]): Future[Boolean] = Future.successful {
     val instancesToKill = executorIds.map(instanceIdFromExecutorId).toSet
     val jobsToInstances = jobClient.query(jobIds.asJava).asScala.values
       .flatMap(job => job.getInstances.asScala.map((job.getUUID, _))).toSeq
@@ -367,7 +369,7 @@ class CoarseCookSchedulerBackend(
     true
   }
 
-  override def doRequestTotalExecutors(requestedTotal: Int): Boolean = {
+  override def doRequestTotalExecutors(requestedTotal: Int): Future[Boolean] = Future.successful {
     logInfo(s"Setting total amount of executors to request to $requestedTotal")
     executorsToRequest = requestedTotal
     requestRemainingInstances()
