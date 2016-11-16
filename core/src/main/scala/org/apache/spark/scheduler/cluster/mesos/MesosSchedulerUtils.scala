@@ -37,7 +37,7 @@ import org.apache.spark.util.Utils
  * Shared trait for implementing a Mesos Scheduler. This holds common state and helper
  * methods and Mesos scheduler will use.
  */
-private[mesos] trait MesosSchedulerUtils extends Logging {
+private[scheduler] trait MesosSchedulerUtils extends Logging {
   // Lock used to wait for scheduler to be registered
   private final val registerLatch = new CountDownLatch(1)
 

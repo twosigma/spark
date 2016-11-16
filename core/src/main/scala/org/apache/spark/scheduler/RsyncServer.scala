@@ -21,7 +21,7 @@ import java.io.{File, PrintWriter}
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 
-import org.apache.spark.Logging
+import org.apache.spark.internal.Logging
 
 import scala.concurrent.{Future, Promise}
 import scala.sys.process.{BasicIO, Process, ProcessLogger}

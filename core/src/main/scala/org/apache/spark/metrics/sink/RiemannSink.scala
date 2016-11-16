@@ -21,12 +21,11 @@ import java.util.Properties
 import java.util.concurrent.TimeUnit
 
 import collection.JavaConversions._
-import scala.util.{Try, Success, Failure}
-
+import scala.util.{Failure, Success, Try}
 import com.codahale.metrics.MetricRegistry
 import com.codahale.metrics.riemann.{Riemann, RiemannReporter}
-
-import org.apache.spark.{Logging, SecurityManager}
+import org.apache.spark.internal.Logging
+import org.apache.spark.SecurityManager
 import org.apache.spark.metrics.MetricsSystem
 
 private[spark] class RiemannSink(val property: Properties, val registry: MetricRegistry,
