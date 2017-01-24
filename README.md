@@ -7,32 +7,32 @@ In order to build this package, you need to build and install `cook jobclient` f
 git clone https://github.com/twosigma/Cook.git
 cd Cook/jobclient
 mvn package
-mvn org.apache.maven.plugins:maven-install-plugin:2.5.2:install-file -Dfile=target/cook-jobclient-0.1.0.jar -DpomFile=pom.xml
+mvn org.apache.maven.plugins:maven-install-plugin:2.5.2:install-file \
+  -Dfile=target/cook-jobclient-0.1.2-snapshot.jar \
+  -DpomFile=pom.xml
 ```
 
-Now, we are ready to build the Spark distribution as follows.
-
+Now, we are ready to build the Spark distribution as follows. Note that if you are using Java 7, we
+probably need to increase heap size used by Maven a little bit. However, if you are on Java 8, you
+could ignore the following step.
 ```
-# Install package to local m2 repository
-build/mvn install -DskipTests=true -Dscala-2.11 -Phadoop-2.6 -Dhadoop.version=2.6.0-cdh5.4.4jco
-
-# Build jar for release without hive support
-./make-distribution.sh --tgz --skip-java-test --scala-version 2.11 -Phadoop-2.6 -Dhadoop.version=2.6.0-cdh5.4.4jco
-
-# Build jar for release with hive support
-./make-distribution.sh --tgz --skip-java-test --scala-version 2.11 -Phive -Phive-thriftserver -Phadoop-2.6 -Dhadoop.version=2.6.0-cdh5.4.4jco
+export MAVEN_OPTS="-Xmx4g -XX:MaxPermSize=1024M -XX:ReservedCodeCacheSize=1024m"
+```
+Then, we could
+```
+./dev/make-distribution.sh --tgz --name hadoop-provided-scala2.11 -Dscala-2.11 -Phadoop-2.6,hadoop-provided,hive -DskipTests
 ```
 
 The tarball will be created with the hadoop version and scala version
 embedded in the tarball name.  Additionally, we use `git describe
 --tags` to create the spark version, rather than just taking what's in
-the pom.xml files.  This way, we get a tarball name that looks like
+the pom.xml files. This way, we get a tarball name that looks like
 
-    spark-1.6.1-31-g9dc4df0-bin-hadoop2.6.0-cdh5.4.4jco-scala2.10.tgz
+    spark-2.0.2-31-g9dc4df0-bin-hadoop-provided-scala2.11.tgz
 
 rather than
 
-    spark-1.6.1-bin-2.6.0-cdh5.4.4jco.tgz
+    spark-2.0.2-bin-hadoop-provided-scala2.11.tgz
 
 and thus we can manage multiple internal releases on the same upstream
 version, and also manage our scala version dependencies appropriately.
