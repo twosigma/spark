@@ -34,9 +34,9 @@
   <url>http://spark.apache.org/</url>
   <dependencies>
     <dependency>
-      <groupId>com.twosigma</groupId>
+      <groupId>twosigma</groupId>
       <artifactId>cook-jobclient</artifactId>
-      <version>0.1.0</version>
+      <version>0.1.2-snapshot</version>
     </dependency>
     <dependency>
       <groupId>org.apache.avro</groupId>
