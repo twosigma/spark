@@ -77,9 +77,8 @@ class CoarseCookSchedulerBackend(
   scheduler: TaskSchedulerImpl,
   sc: SparkContext,
   cookHost: String,
-  cookPort: Int)
-    extends CoarseGrainedSchedulerBackend(scheduler, sc.env.rpcEnv) with Logging
-    with MesosSchedulerUtils {
+  cookPort: Int
+) extends CoarseGrainedSchedulerBackend(scheduler, sc.env.rpcEnv) with Logging with MesosSchedulerUtils {
 
   val maxCores = conf.getInt("spark.cores.max", 0)
   val maxCoresPerJob = conf.getInt("spark.executor.cores", 1)
@@ -110,6 +109,7 @@ class CoarseCookSchedulerBackend(
     .setStatusUpdateInterval(10)
     .setBatchRequestSize(24)
     .setKerberosAuth()
+    .setRetries(1)
     .build()
 
   private[this] val jobListener = new CJobListener {
