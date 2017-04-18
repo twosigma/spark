@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.scheduler
+package org.apache.spark.scheduler.cluster.cook
 
 import java.io.{File, PrintWriter}
 import java.nio.file.Files
