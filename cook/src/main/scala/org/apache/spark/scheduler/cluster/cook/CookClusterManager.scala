@@ -15,48 +15,45 @@
  * limitations under the License.
  */
 
-package org.apache.spark.scheduler.cluster.mesos
+package org.apache.spark.scheduler.cluster.cook
 
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkContext, SparkException}
 import org.apache.spark.internal.config._
 import org.apache.spark.scheduler.{ExternalClusterManager, SchedulerBackend, TaskScheduler, TaskSchedulerImpl}
 
 /**
- * Cluster Manager for creation of Mesos scheduler and backend
+ * Cluster Manager for creation of Cook scheduler and backend
  */
-private[spark] class MesosClusterManager extends ExternalClusterManager {
-  private val MESOS_REGEX = """mesos://(.*)""".r
+private[spark] class CookClusterManager extends ExternalClusterManager {
+  val COOK_REGEX = """cook://(.*):([0-9]+)""".r
 
-  override def canCreate(masterURL: String): Boolean =
-    masterURL.startsWith("mesos")
+  override def canCreate(masterURL: String): Boolean = {
+    masterURL.startsWith("cook")
+  }
 
-  override def createTaskScheduler(sc: SparkContext, masterURL: String): TaskScheduler =
+  override def createTaskScheduler(sc: SparkContext, masterURL: String): TaskScheduler = {
     new TaskSchedulerImpl(sc)
+  }
 
   override def createSchedulerBackend(sc: SparkContext,
       masterURL: String,
       scheduler: TaskScheduler): SchedulerBackend = {
+
+    // TODO: Investigate; Cook may not need this restriction.
     require(!sc.conf.get(IO_ENCRYPTION_ENABLED),
-      "I/O encryption is currently not supported in Mesos.")
+            "I/O encryption is currently not supported in Mesos (or Cook).")
 
-    val mesosUrl = MESOS_REGEX.findFirstMatchIn(masterURL).get.group(1)
-    val coarse = sc.conf.getBoolean("spark.mesos.coarse", defaultValue = true)
-    if (coarse) {
-      new MesosCoarseGrainedSchedulerBackend(
-        scheduler.asInstanceOf[TaskSchedulerImpl],
-        sc,
-        mesosUrl,
-        sc.env.securityManager)
-    } else {
-      new MesosFineGrainedSchedulerBackend(
-        scheduler.asInstanceOf[TaskSchedulerImpl],
-        sc,
-        mesosUrl)
-    }
+    val cookUrl = COOK_REGEX.findFirstMatchIn(masterURL)
+    val cookHostname = cookUrl.get.group(1)
+    val cookPort = cookUrl.get.group(2).toInt
+    new CoarseCookSchedulerBackend(
+      scheduler.asInstanceOf[TaskSchedulerImpl],
+      sc,
+      cookHostname,
+      cookPort)
   }
 
-  override def initialize(scheduler: TaskScheduler, backend: SchedulerBackend): Unit = {
+  override def initialize(scheduler: TaskScheduler, backend: SchedulerBackend): Unit =
     scheduler.asInstanceOf[TaskSchedulerImpl].initialize(backend)
-  }
 }
 
