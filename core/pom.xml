@@ -34,11 +34,6 @@
   <url>http://spark.apache.org/</url>
   <dependencies>
     <dependency>
-      <groupId>twosigma</groupId>
-      <artifactId>cook-jobclient</artifactId>
-      <version>0.1.2-snapshot</version>
-    </dependency>
-    <dependency>
       <groupId>org.apache.avro</groupId>
       <artifactId>avro</artifactId>
     </dependency>
@@ -270,11 +265,6 @@
     <dependency>
       <groupId>io.dropwizard.metrics</groupId>
       <artifactId>metrics-graphite</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.riemann</groupId>
-      <artifactId>metrics3-riemann-reporter</artifactId>
-      <version>0.4.2</version>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
