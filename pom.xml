@@ -2809,6 +2809,13 @@
     </profile>
 
     <profile>
+      <id>cook</id>
+      <modules>
+        <module>cook</module>
+      </modules>
+    </profile>
+
+    <profile>
       <id>hive-thriftserver</id>
       <modules>
         <module>sql/hive-thriftserver</module>
