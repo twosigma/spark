@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.scheduler
+package org.apache.spark.scheduler.cluster.cook
 
 import java.io.{BufferedWriter, File, FileWriter, PrintWriter}
 import java.lang.Thread.UncaughtExceptionHandler
@@ -31,6 +31,7 @@ import scala.util.{Failure, Success, Try}
 import org.apache.mesos._
 import org.apache.mesos.Protos._
 import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.scheduler.{ExecutorExited, SlaveLost, TaskSchedulerImpl}
 import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend
 import org.apache.spark.scheduler.cluster.mesos.{MesosCoarseGrainedSchedulerBackend, MesosSchedulerUtils}
 import org.json.JSONObject
