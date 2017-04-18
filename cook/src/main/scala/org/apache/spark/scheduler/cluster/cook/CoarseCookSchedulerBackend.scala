@@ -110,7 +110,6 @@ class CoarseCookSchedulerBackend(
     .setStatusUpdateInterval(10)
     .setBatchRequestSize(24)
     .setKerberosAuth()
-    .setRetries(1)
     .build()
 
   private[this] val jobListener = new CJobListener {
@@ -280,6 +279,7 @@ class CoarseCookSchedulerBackend(
       .setMemory(executorMemory(sc).toDouble)
       .setCpus(numCores)
       .setPriority(priority)
+      .setRetries(1)
 
     val container = conf.get("spark.executor.cook.container", null)
     if(container != null) {
