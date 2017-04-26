@@ -8,7 +8,7 @@ git clone https://github.com/twosigma/Cook.git
 cd Cook/jobclient
 mvn package
 mvn org.apache.maven.plugins:maven-install-plugin:2.5.2:install-file \
-  -Dfile=target/cook-jobclient-0.1.2-snapshot.jar \
+  -Dfile=target/cook-jobclient-0.1.2-SNAPSHOT.jar \
   -DpomFile=pom.xml
 ```
 
@@ -20,8 +20,10 @@ export MAVEN_OPTS="-Xmx4g -XX:MaxPermSize=1024M -XX:ReservedCodeCacheSize=1024m"
 ```
 Then, we could
 ```
-./dev/make-distribution.sh --tgz --name hadoop-provided-scala2.11 -Dscala-2.11 -Phadoop-2.6,hadoop-provided,hive -DskipTests
+./dev/make-distribution.sh --tgz --name hadoop-provided-scala2.11 -Dscala-2.11 -Phadoop-2.6,hadoop-provided,hive,cook -DskipTests
 ```
+
+Note: you need to make sure to include "cook" among the optional profiles (-P).
 
 The tarball will be created with the hadoop version and scala version
 embedded in the tarball name.  Additionally, we use `git describe
