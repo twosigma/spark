@@ -45,6 +45,10 @@ object CoarseCookSchedulerBackend {
   def fetchUri(uri: String): String =
     Option(URI.create(uri).getScheme).map(_.toLowerCase) match {
       case Some("http") => s"curl -O $uri"
+      case Some("rsync") =>
+        val regex = "^rsync://".r
+        val cleanURI = regex.replaceFirstIn(uri, "")
+        s" rsync $cleanURI ./"
       case Some("spark-rsync") =>
         val regex = "^spark-rsync://".r
         val cleanURI = regex.replaceFirstIn(uri, "")
