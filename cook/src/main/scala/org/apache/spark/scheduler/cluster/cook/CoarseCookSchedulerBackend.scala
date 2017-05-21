@@ -70,8 +70,6 @@ object CoarseCookSchedulerBackend {
   }
 }
 
-
-
 /**
  * A SchedulerBackend that runs tasks using Cook, using "coarse-grained" tasks, where it holds
  * onto Cook instances for the duration of the Spark job instead of relinquishing cores whenever
@@ -97,28 +95,12 @@ class CoarseCookSchedulerBackend(
   cookPort: Int
 ) extends CoarseGrainedSchedulerBackend(scheduler, sc.env.rpcEnv) with Logging with MesosSchedulerUtils {
 
-  val maxCores = conf.getInt("spark.cores.max", 0)
-  val maxCoresPerJob = conf.getInt("spark.executor.cores", 1)
-  val priority = conf.getInt("spark.cook.priority", 75)
-  val jobNamePrefix = conf.get("spark.cook.job.name.prefix", "sparkjob")
-  val maxFailures = conf.getInt("spark.executor.failures", 5)
-  val dynamicAllocationEnabled = conf.getBoolean("spark.dynamicAllocation.enabled", false)
-
-  if (conf.contains("spark.cores.max") && dynamicAllocationEnabled) {
-    logWarning("spark.cores.max is ignored when dynamic allocation is enabled. Use spark.dynamicAllocation.maxExecutors instead")
-  }
-
-  def currentInstancesToRequest: Int = (executorsToRequest - totalInstancesRequested)
-  var executorsToRequest: Int = if (dynamicAllocationEnabled) {
-    conf.getInt("spark.dynamicAllocation.minExecutors", 0)
-  } else {
-    maxCores / maxCoresPerJob
-  }
-  var totalInstancesRequested = 0
-  var totalFailures = 0
-  val jobIds = mutable.Set[UUID]()
-  val abortedJobIds = mutable.Set[UUID]()
-  private val executorIdToJobId = mutable.HashMap[String, UUID]()
+  private[this] val schedulerConf = CookSchedulerConfiguration.conf(conf)
+  private[this] var executorsRequested = 0
+  private[this] var totalFailures = 0
+  private[this] val jobIds = mutable.Set[UUID]()
+  private[this] val abortedJobIds = mutable.Set[UUID]()
+  private[this] val executorIdToJobId = mutable.HashMap[String, UUID]()
 
   private[this] val jobClient = new JobClient.Builder()
     .setHost(cookHost)
@@ -136,7 +118,7 @@ class CoarseCookSchedulerBackend(
       val isAborted = abortedJobIds.contains(job.getUUID)
 
       if (isCompleted) {
-        totalInstancesRequested -= 1
+        executorsRequested -= 1
         abortedJobIds -= job.getUUID
         jobIds -= job.getUUID
 
@@ -146,18 +128,21 @@ class CoarseCookSchedulerBackend(
 
         if (!job.isSuccess && !isAborted) {
           totalFailures += 1
-          logWarning(s"Job ${job.getUUID} has died. Failure ($totalFailures/$maxFailures)")
+          logWarning(s"Job ${job.getUUID} has died. " +
+            s"Failure ($totalFailures/$schedulerConf.getMaximumExecutorFailures)")
           jobIds -= job.getUUID
-          if (totalFailures >= maxFailures) {
+          if (totalFailures >= schedulerConf.getMaximumExecutorFailures) {
             // TODO should we abort the outstanding tasks now?
-            logError(s"We have exceeded our maximum failures ($maxFailures)" +
+            logError(s"We have exceeded our maximum failures " +
+              s"($schedulerConf.getMaximumExecutorFailures)" +
               "and will not relaunch any more tasks")
           }
         }
       }
     }
   }
-  def executorUUIDWriter: UUID => Unit =
+
+  private def executorUUIDWriter: UUID => Unit =
     conf.getOption("spark.cook.executoruuid.log").fold { _: UUID => () } { _file =>
       def file(ct: Int) = s"${_file}.$ct"
       def path(ct: Int) = Paths.get(file(ct))
@@ -186,13 +171,13 @@ class CoarseCookSchedulerBackend(
       }
     }
 
-  val sparkMesosScheduler =
+  private[this] val sparkMesosScheduler =
     new MesosCoarseGrainedSchedulerBackend(scheduler, sc, "", sc.env.securityManager)
 
   override def applicationId(): String = conf.get("spark.cook.applicationId", super.applicationId())
   override def applicationAttemptId(): Option[String] = Some(applicationId())
 
-  def createJob(numCores: Double): Job = {
+  private def createJob(numCores: Double): Job = {
     import CoarseCookSchedulerBackend.fetchURI
 
     val jobId = UUID.randomUUID()
@@ -291,11 +276,11 @@ class CoarseCookSchedulerBackend(
 
     val builder = new Job.Builder()
       .setUUID(jobId)
-      .setName(jobNamePrefix)
+      .setName(schedulerConf.getPrefixOfCookJobName)
       .setCommand(cmds.mkString("; "))
       .setMemory(executorMemory(sc).toDouble)
       .setCpus(numCores)
-      .setPriority(priority)
+      .setPriority(schedulerConf.getPriorityPerCookJob)
       .disableMeaCulpaRetries()
       .setRetries(1)
 
@@ -309,7 +294,8 @@ class CoarseCookSchedulerBackend(
     builder.build()
   }
 
-  private[this] val minExecutorsNecessary = currentInstancesToRequest * minRegisteredRatio
+  private[this] val minExecutorsNecessary =
+    schedulerConf.getExecutorsToRequest(0) * minRegisteredRatio
 
   override def sufficientResourcesRegistered(): Boolean =
     totalRegisteredExecutors.get >= minExecutorsNecessary
@@ -377,8 +363,8 @@ class CoarseCookSchedulerBackend(
 
   override def doRequestTotalExecutors(requestedTotal: Int): Future[Boolean] = Future.successful {
     logInfo(s"Setting total amount of executors to request to $requestedTotal")
-    executorsToRequest = requestedTotal
-    requestRemainingInstances()
+    schedulerConf.setMaximumCores(requestedTotal)
+    requestExecutorsIfNecessary()
     true
   }
 
@@ -392,23 +378,40 @@ class CoarseCookSchedulerBackend(
     @annotation.tailrec
     def loop(instancesRemaining: Double, jobs: List[Job]): List[Job] =
       if (instancesRemaining <= 0) jobs
-      else loop(instancesRemaining - 1, createJob(maxCoresPerJob) :: jobs)
-    loop(currentInstancesToRequest, Nil).reverse
+      else loop(instancesRemaining - 1, createJob(schedulerConf.getCoresPerCookJob) :: jobs)
+
+    loop(schedulerConf.getExecutorsToRequest(executorsRequested), Nil).reverse
   }
 
   /**
-   * Request cores from Cook via cook jobs.
+   * Kill the extra executors if necessary.
    */
-  private[this] def requestRemainingInstances(): Unit = {
+  private[this] def killExecutorsIfNecessary(): Unit = {
+    val executorsToKill = schedulerConf.getExecutorsToKil(executorsRequested)
+    if (executorsToKill > 0) {
+      val jobIdsToKill = jobIds.take(executorsToKill)
+      Try[Unit](jobClient.abort(jobIdsToKill.asJava)) match {
+        case Failure(e) =>
+          logWarning("Failed to abort redundant jobs", e)
+        case Success(_) =>
+          logInfo(s"Successfully abort $executorsToKill jobs.")
+          jobIdsToKill.foreach(abortedJobIds.add)
+      }
+    }
+  }
+
+  /**
+   * Request more executors from Cook via cook jobs if necessary.
+   */
+  private[this] def requestExecutorsIfNecessary(): Unit = {
     val jobs = createRemainingJobs()
     if (jobs.nonEmpty) {
       Try[Unit](jobClient.submit(jobs.asJava, jobListener)) match {
         case Failure(e) => logWarning("Can't request more instances", e)
-        case Success(_) => {
+        case Success(_) =>
           logInfo(s"Successfully requested ${jobs.size} instances")
-          totalInstancesRequested += jobs.size
+          executorsRequested += jobs.size
           jobs.map(_.getUUID).foreach(jobIds.add)
-        }
       }
     }
   }
@@ -429,9 +432,12 @@ class CoarseCookSchedulerBackend(
   override def start(): Unit = {
     super.start()
 
-    requestRemainingInstances()
+    requestExecutorsIfNecessary()
     resourceManagerService.scheduleAtFixedRate(new Runnable() {
-      override def run(): Unit = requestRemainingInstances()
+      override def run(): Unit = {
+        requestExecutorsIfNecessary()
+        killExecutorsIfNecessary()
+      }
     }, 10, 10, TimeUnit.SECONDS)
   }
 
