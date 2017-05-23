@@ -168,7 +168,9 @@ class CoarseCookSchedulerBackend(
       .setId(OfferID.newBuilder().setValue("Cook-id"))
       .setFrameworkId(FrameworkID.newBuilder().setValue("Cook"))
       .setHostname("$(hostname)")
-      .setSlaveId(SlaveID.newBuilder().setValue("${MESOS_EXECUTOR_ID}"))
+      // Since each job has at most one instance, we could use the job id
+      // as slave id for its uniqueness.
+      .setSlaveId(SlaveID.newBuilder().setValue(jobId.toString))
       .build()
     val taskId = sparkMesosScheduler.newMesosTaskId()
     val commandInfo = sparkMesosScheduler.createCommand(fakeOffer, numCores.toInt, taskId)
@@ -262,6 +264,10 @@ class CoarseCookSchedulerBackend(
       .setMemory(sparkMesosScheduler.calculateTotalMemory(sc).toDouble)
       .setCpus(numCores)
       .setPriority(schedulerConf.getPriorityPerCookJob)
+      // Ensure the job has at most one instance by setting max-retries: 1 and
+      // disable-mea-culpa-retries: true.
+      .disableMeaCulpaRetries()
+      .setRetries(1)
 
     val container = conf.get("spark.executor.cook.container", null)
     if(container != null) {
