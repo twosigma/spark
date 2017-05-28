@@ -117,7 +117,7 @@ class CoarseCookSchedulerBackend(
   var totalFailures = 0
   val jobIds = mutable.Set[UUID]()
   val abortedJobIds = mutable.Set[UUID]()
-  private val taskOrExecutorIdToJobId = mutable.HashMap[String, UUID]()
+  private val executorIdToJobId = mutable.HashMap[String, UUID]()
 
   private[this] val jobClient = new JobClient.Builder()
     .setHost(cookHost)
@@ -196,15 +196,13 @@ class CoarseCookSchedulerBackend(
 
     val jobId = UUID.randomUUID()
     val taskId = sparkMesosScheduler.newMesosTaskId()
-    taskOrExecutorIdToJobId += taskId -> jobId
-
-    executorUUIDWriter(jobId)
-    logInfo(s"Creating job with id: $jobId")
+    executorIdToJobId += taskId -> jobId
+    logInfo(s"Creating job with id: $jobId. The corresponding executor id and task id is $taskId")
     val fakeOffer = Offer.newBuilder()
       .setId(OfferID.newBuilder().setValue("Cook-id"))
       .setFrameworkId(FrameworkID.newBuilder().setValue("Cook"))
       .setHostname("$(hostname)")
-      .setSlaveId(SlaveID.newBuilder().setValue("${MESOS_EXECUTOR_ID}"))
+      .setSlaveId(SlaveID.newBuilder().setValue(jobId.toString))
       .build()
     val commandInfo = sparkMesosScheduler.createCommand(fakeOffer, numCores.toInt, taskId)
     val commandString = commandInfo.getValue
@@ -297,6 +295,7 @@ class CoarseCookSchedulerBackend(
       .setMemory(executorMemory(sc).toDouble)
       .setCpus(numCores)
       .setPriority(priority)
+      .disableMeaCulpaRetries()
       .setRetries(1)
 
     val container = conf.get("spark.executor.cook.container", null)
@@ -337,9 +336,10 @@ class CoarseCookSchedulerBackend(
       }
 
       def handleDisconnectedExecutor(executorId: String): Unit = {
-        logInfo(s"Received disconnect message from executor with ID: $executorId")
+        logInfo(s"Received disconnect message from executor with id $executorId." +
+          s" Its related cook job id is ${executorIdToJobId(executorId)}")
         // TODO: we end up querying for everything, not sure of the perf implications here
-        val jobId = taskOrExecutorIdToJobId(executorId)
+        val jobId = executorIdToJobId(executorId)
         val jobInstances = jobClient.query(Seq(jobId).asJava).asScala.values
           .flatMap(_.getInstances.asScala).toSeq
         val slaveLostReason = SlaveLost("Remote RPC client disassociated likely due to " +
@@ -354,7 +354,7 @@ class CoarseCookSchedulerBackend(
           if (instance.getPreempted) {
             logInfo(s"Executor $executorId was removed due to preemption. Marking as killed.")
             removeExecutor(executorId, ExecutorExited(instance.getReasonCode.toInt,
-              false, "Executor was preempted by the scheduler."))
+              exitCausedByApp = false, "Executor was preempted by the scheduler."))
           } else {
             removeExecutor(executorId, slaveLostReason)
           }
@@ -368,7 +368,7 @@ class CoarseCookSchedulerBackend(
    * @return whether the kill request is acknowledged.
    */
   override def doKillExecutors(executorIds: Seq[String]): Future[Boolean] = Future.successful {
-    val jobIdsToKill = executorIds.map(taskOrExecutorIdToJobId.apply)
+    val jobIdsToKill = executorIds.flatMap(executorIdToJobId.get)
     jobClient.abort(jobIdsToKill.asJava)
     jobIdsToKill.foreach(abortedJobIds.add)
     true
