@@ -91,7 +91,7 @@ abstract class AbstractCommandBuilder {
    */
   List<String> buildJavaCommand(String extraClassPath) throws IOException {
     List<String> cmd = new ArrayList<>();
-    String javaCommand = System.getenv("JAVA_CMD");
+    String javaCommand = System.getenv("JAVA_COMMAND");
     if (javaCommand != null) {
       cmd.addAll(Arrays.asList(javaCommand.trim().split("\\s+")));
       return cmd;
