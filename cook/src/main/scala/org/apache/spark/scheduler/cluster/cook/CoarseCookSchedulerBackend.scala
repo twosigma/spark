@@ -129,7 +129,7 @@ class CoarseCookSchedulerBackend(
         if (!job.isSuccess && !isAborted) {
           totalFailures += 1
           logWarning(s"Job ${job.getUUID} has died. " +
-            s"Failure ($totalFailures/$schedulerConf.getMaximumExecutorFailures)")
+            s"Failure ($totalFailures/${schedulerConf.getMaximumExecutorFailures})")
           jobIds -= job.getUUID
           if (totalFailures >= schedulerConf.getMaximumExecutorFailures) {
             // TODO should we abort the outstanding tasks now?
