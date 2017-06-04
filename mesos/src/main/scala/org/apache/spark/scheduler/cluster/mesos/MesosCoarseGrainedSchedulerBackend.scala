@@ -201,6 +201,8 @@ private[spark] class MesosCoarseGrainedSchedulerBackend(
     val uri = conf.getOption("spark.executor.uri")
       .orElse(Option(System.getenv("SPARK_EXECUTOR_URI")))
 
+    val cookAppId = conf.get("spark.cook.applicationId", applicationId())
+
     if (uri.isEmpty) {
       val executorSparkHome = conf.getOption("spark.mesos.executor.home")
         .orElse(sc.getSparkHome())
@@ -215,7 +217,7 @@ private[spark] class MesosCoarseGrainedSchedulerBackend(
         s" --executor-id $taskId" +
         s" --hostname ${offer.getHostname}" +
         s" --cores $numCores" +
-        s" --app-id $appId")
+        s" --app-id $cookAppId")
     } else {
       // Grab everything to the first '.'. We'll use that and '*' to
       // glob the directory "correctly".
@@ -228,7 +230,8 @@ private[spark] class MesosCoarseGrainedSchedulerBackend(
         s" --hostname ${offer.getHostname}" +
         s" --cores $numCores" +
         s" --app-id $appId")
-      command.addUris(CommandInfo.URI.newBuilder().setValue(uri.get).setCache(useFetcherCache))
+        s" --app-id $cookAppId")
+      command.addUris(CommandInfo.URI.newBuilder().setValue(uri.get))
     }
 
     conf.getOption("spark.mesos.uris").foreach(setupUris(_, command, useFetcherCache))
