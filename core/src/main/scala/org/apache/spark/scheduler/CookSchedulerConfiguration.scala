@@ -46,7 +46,7 @@ class CookSchedulerConfiguration(
 
   // ==========================================================================
   // Config options
-  private[this] var maximumCores = if (dynamicAllocationEnabled) {
+  private[this] var totalCores = if (dynamicAllocationEnabled) {
     // Let the dynamic allocation mechanism ask for what it wants, we don't
     // need to initialize this up front
     0
@@ -69,13 +69,13 @@ class CookSchedulerConfiguration(
 
   def getCoresPerCookJob: Int = coresPerCookJob
 
-  def getMaximumCores: Int = maximumCores
+  def getMaximumCores: Int = totalCores
 
   def setMaximumCores(cores: Int): CookSchedulerConfiguration = {
     require(cores >= 0, "The maximum number of cores should be non-negative.")
-    maximumCores = cores
+    totalCores = cores
     logInfo(
-      s"The maximum cores of Cook scheduler has been set to $maximumCores")
+      s"The maximum cores of Cook scheduler has been set to $totalCores")
     this
   }
 
@@ -113,10 +113,10 @@ class CookSchedulerConfiguration(
   }
 
   def getExecutorsToRequest(executorsRequested: Int = 0): Int =
-    Math.max(maximumCores / coresPerCookJob - executorsRequested, 0)
+    Math.max(totalCores / coresPerCookJob - executorsRequested, 0)
 
   def getExecutorsToKill(executorsRequested: Int = 0): Int =
-    Math.max(executorsRequested - maximumCores / coresPerCookJob, 0)
+    Math.max(executorsRequested - totalCores / coresPerCookJob, 0)
 
 }
 
