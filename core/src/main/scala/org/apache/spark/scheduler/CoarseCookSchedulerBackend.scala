@@ -362,7 +362,7 @@ class CoarseCookSchedulerBackend(
 
   override def doRequestTotalExecutors(requestedTotal: Int): Future[Boolean] = Future.successful {
     logInfo(s"Setting total amount of executors to request to $requestedTotal")
-    schedulerConf.setMaximumCores(requestedTotal)
+    schedulerConf.setMaximumCores(requestedTotal * schedulerConf.getCoresPerCookJob)
     requestExecutorsIfNecessary()
     true
   }
