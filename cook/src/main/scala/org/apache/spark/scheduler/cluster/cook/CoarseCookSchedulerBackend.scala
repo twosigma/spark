@@ -363,7 +363,7 @@ class CoarseCookSchedulerBackend(
 
   override def doRequestTotalExecutors(requestedTotal: Int): Future[Boolean] = Future.successful {
     logInfo(s"Setting total amount of executors to request to $requestedTotal")
-    schedulerConf.setMaximumCores(requestedTotal)
+    schedulerConf.setMaximumCores(requestedTotal * schedulerConf.getCoresPerCookJob)
     requestExecutorsIfNecessary()
     true
   }
@@ -387,7 +387,7 @@ class CoarseCookSchedulerBackend(
    * Kill the extra executors if necessary.
    */
   private[this] def killExecutorsIfNecessary(): Unit = {
-    val executorsToKill = schedulerConf.getExecutorsToKil(executorsRequested)
+    val executorsToKill = schedulerConf.getExecutorsToKill(executorsRequested)
     if (executorsToKill > 0) {
       val jobIdsToKill = jobIds.take(executorsToKill)
       Try[Unit](jobClient.abort(jobIdsToKill.asJava)) match {
