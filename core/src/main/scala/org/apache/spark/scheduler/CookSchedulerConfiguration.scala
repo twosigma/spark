@@ -37,10 +37,6 @@ class CookSchedulerConfiguration(
   private[this] val SPARK_EXECUTOR_FAILURES = "spark.executor.failures"
   private[this] val SPARK_DYNAMICALLOCATION_ENABLED =
     "spark.dynamicAllocation.enabled"
-  private[this] val SPARK_DYNAMICALLOCATION_MIN_EXECUTORS =
-    "spark.dynamicAllocation.minExecutors"
-  private[this] val SPARK_DYNAMICALLOCATION_MAX_EXECUTORS =
-    "spark.dynamicAllocation.maxExecutors"
   private[this] val SPARK_COOK_PRIORITY = "spark.cook.priority"
   private[this] val SPARK_COOK_JOB_NAME_PREFIX = "spark.cook.job.name.prefix"
 
@@ -50,8 +46,10 @@ class CookSchedulerConfiguration(
 
   // ==========================================================================
   // Config options
-  private[this] var maximumCores = if (dynamicAllocationEnabled) {
-    conf.getInt(SPARK_DYNAMICALLOCATION_MIN_EXECUTORS, 0) * coresPerCookJob
+  private[this] var totalCores = if (dynamicAllocationEnabled) {
+    // Let the dynamic allocation mechanism ask for what it wants, we don't
+    // need to initialize this up front
+    0
   } else {
     conf.getInt(SPARK_CORES_MAX, 0)
   }
@@ -66,18 +64,18 @@ class CookSchedulerConfiguration(
   if (conf.getOption(SPARK_CORES_MAX).isDefined && dynamicAllocationEnabled) {
     logWarning(
       s"$SPARK_CORES_MAX is ignored when dynamic allocation is enabled. " +
-        s"Use $SPARK_DYNAMICALLOCATION_MAX_EXECUTORS instead.")
+        s"Use spark.dynamicAllocation.{min,initial,max}Executors instead.")
   }
 
   def getCoresPerCookJob: Int = coresPerCookJob
 
-  def getMaximumCores: Int = maximumCores
+  def getMaximumCores: Int = totalCores
 
   def setMaximumCores(cores: Int): CookSchedulerConfiguration = {
     require(cores >= 0, "The maximum number of cores should be non-negative.")
-    maximumCores = cores
+    totalCores = cores
     logInfo(
-      s"The maximum cores of Cook scheduler has been set to $maximumCores")
+      s"The maximum cores of Cook scheduler has been set to $totalCores")
     this
   }
 
@@ -115,10 +113,10 @@ class CookSchedulerConfiguration(
   }
 
   def getExecutorsToRequest(executorsRequested: Int = 0): Int =
-    Math.max(maximumCores / coresPerCookJob - executorsRequested, 0)
+    Math.max(totalCores / coresPerCookJob - executorsRequested, 0)
 
-  def getExecutorsToKil(executorsRequested: Int = 0): Int =
-    Math.max(executorsRequested - maximumCores / coresPerCookJob, 0)
+  def getExecutorsToKill(executorsRequested: Int = 0): Int =
+    Math.max(executorsRequested - totalCores / coresPerCookJob, 0)
 
 }
 
