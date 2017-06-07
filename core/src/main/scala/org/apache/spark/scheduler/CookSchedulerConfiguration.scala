@@ -117,7 +117,7 @@ class CookSchedulerConfiguration(
   def getExecutorsToRequest(executorsRequested: Int = 0): Int =
     Math.max(maximumCores / coresPerCookJob - executorsRequested, 0)
 
-  def getExecutorsToKil(executorsRequested: Int = 0): Int =
+  def getExecutorsToKill(executorsRequested: Int = 0): Int =
     Math.max(executorsRequested - maximumCores / coresPerCookJob, 0)
 
 }
