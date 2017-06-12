@@ -18,126 +18,47 @@
 package org.apache.spark.scheduler
 
 import org.apache.spark.SparkConf
-import org.apache.spark.internal.Logging
 
-/**
-  * To use this configuration in PySpark, one could do
-  * {{{
-  *   >>> cook_conf_obj = sc._jvm.org.apache.spark.scheduler.CookSchedulerConfiguration
-  *   >>> cook_conf = cook_conf_obj.conf()
-  *   >>> cook_conf.setMaximumCores(8)
-  * }}}
-  */
-class CookSchedulerConfiguration(
-    @transient val conf: SparkConf
-) extends Logging {
+case class CookSchedulerConfiguration(
+    @transient conf: SparkConf
+) {
 
-  private[this] val SPARK_CORES_MAX = "spark.cores.max"
-  private[this] val SPARK_EXECUTOR_CORES = "spark.executor.cores"
-  private[this] val SPARK_EXECUTOR_FAILURES = "spark.executor.failures"
-  private[this] val SPARK_DYNAMICALLOCATION_ENABLED =
+  val SPARK_CORES_MAX = "spark.cores.max"
+
+  val SPARK_EXECUTOR_CORES = "spark.executor.cores"
+
+  val SPARK_DYNAMIC_ALLOCATION_ENABLED =
     "spark.dynamicAllocation.enabled"
-  private[this] val SPARK_COOK_PRIORITY = "spark.cook.priority"
-  private[this] val SPARK_COOK_JOB_NAME_PREFIX = "spark.cook.job.name.prefix"
 
-  private[this] val dynamicAllocationEnabled =
-    conf.getBoolean(SPARK_DYNAMICALLOCATION_ENABLED, defaultValue = false)
-  private[this] val coresPerCookJob = conf.getInt(SPARK_EXECUTOR_CORES, 1)
+  val SPARK_COOK_PRIORITY = "spark.cook.priority"
 
-  // ==========================================================================
-  // Config options
-  private[this] var totalCores = if (dynamicAllocationEnabled) {
-    // Let the dynamic allocation mechanism ask for what it wants, we don't
-    // need to initialize this up front
-    0
-  } else {
-    conf.getInt(SPARK_CORES_MAX, 0)
-  }
-  private[this] var maximumExecutorFailures =
-    conf.getInt(SPARK_EXECUTOR_FAILURES, 5)
-  private[this] var priorityOfCookJob = conf.getInt(SPARK_COOK_PRIORITY, 75)
-  private[this] var prefixOfCookJobName =
+  val SPARK_COOK_JOB_NAME_PREFIX = "spark.cook.job.name.prefix"
+
+  val SPARK_SCHEDULER_MIN_REGISTERED_RESOURCE_RATIO =
+    "spark.scheduler.minRegisteredResourcesRatio"
+
+  val SPARK_COOK_APPLICATION_ID = "spark.cook.applicationId"
+
+  val SPARK_EXECUTOR_COOK_CONTAINER = "spark.executor.cook.container"
+
+  val PRINCIPALS_THAT_CAN_VIEW = "principalsThatCanView"
+
+  val SPARK_EXECUTOR_COOK_PRINCIPALS_THAT_CAN_VIEW =
+    s"spark.executor.cook.$PRINCIPALS_THAT_CAN_VIEW"
+
+  val minRegisteredResourceRatio: Double = math.min(
+    1,
+    conf.getDouble(SPARK_SCHEDULER_MIN_REGISTERED_RESOURCE_RATIO, 0))
+
+  val isDynamicAllocationEnabled: Boolean =
+    conf.getBoolean(SPARK_DYNAMIC_ALLOCATION_ENABLED, defaultValue = false)
+
+  val coresPerCookJob: Int = conf.getInt(SPARK_EXECUTOR_CORES, 1)
+
+  val maxCores: Int = conf.getInt(SPARK_CORES_MAX, 0)
+
+  val cookJobPriority: Int = conf.getInt(SPARK_COOK_PRIORITY, 75)
+
+  val cookJobNamePrefix: String =
     conf.get(SPARK_COOK_JOB_NAME_PREFIX, "sparkjob")
-
-  // ==========================================================================1
-
-  if (conf.getOption(SPARK_CORES_MAX).isDefined && dynamicAllocationEnabled) {
-    logWarning(
-      s"$SPARK_CORES_MAX is ignored when dynamic allocation is enabled. " +
-        s"Use spark.dynamicAllocation.{min,initial,max}Executors instead.")
-  }
-
-  def getCoresPerCookJob: Int = coresPerCookJob
-
-  def getMaximumCores: Int = totalCores
-
-  def setMaximumCores(cores: Int): CookSchedulerConfiguration = {
-    require(cores >= 0, "The maximum number of cores should be non-negative.")
-    totalCores = cores
-    logInfo(
-      s"The maximum cores of Cook scheduler has been set to $totalCores")
-    this
-  }
-
-  def getPriorityPerCookJob: Int = priorityOfCookJob
-
-  def setPriorityPerCookJob(priority: Int): CookSchedulerConfiguration = {
-    require(
-      0 < priority && priority <= 100,
-      "The priority of Cook job must be within range of (0, 100]."
-    )
-    priorityOfCookJob = priority
-    logInfo(
-      s"The priority of jobs in Cook scheduler has been set to $priorityOfCookJob")
-    this
-  }
-
-  def getPrefixOfCookJobName: String = prefixOfCookJobName
-
-  def setPrefixOfCookJobName(prefix: String): CookSchedulerConfiguration = {
-    prefixOfCookJobName = prefix
-    logInfo(
-      s"The name prefix of jobs in Cook scheduler has been set to $prefixOfCookJobName")
-    this
-  }
-
-  def getMaximumExecutorFailures: Int = maximumExecutorFailures
-
-  def setMaximumExecutorFailures(maxExecutorFailures: Int): CookSchedulerConfiguration = {
-    require(
-      maxExecutorFailures > 0,
-      "The maximum executor failures must be positive."
-    )
-    maximumExecutorFailures = maxExecutorFailures
-    this
-  }
-
-  def getExecutorsToRequest(executorsRequested: Int = 0): Int =
-    Math.max(totalCores / coresPerCookJob - executorsRequested, 0)
-
-  def getExecutorsToKill(executorsRequested: Int = 0): Int =
-    Math.max(executorsRequested - totalCores / coresPerCookJob, 0)
-
-}
-
-object CookSchedulerConfiguration {
-
-  @volatile
-  private[this] var configuration: CookSchedulerConfiguration = _
-
-  private[spark] def conf(conf: SparkConf): CookSchedulerConfiguration = {
-    if (configuration == null) {
-      this.synchronized {
-        if (configuration == null) {
-          configuration = new CookSchedulerConfiguration(conf)
-        }
-      }
-    }
-    configuration
-  }
-
-  def conf(): CookSchedulerConfiguration = {
-    require(configuration != null, "It haven't been initialized yet.")
-    configuration
-  }
 }
