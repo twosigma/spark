@@ -67,11 +67,10 @@ case class CookSchedulerContext(
   /**
     * @return executor ids of alive executors.
     */
-  def getAliveExecutorIds: Seq[String] = {
+  def getExecutorIds: Seq[String] = {
     require(sc.schedulerBackend.isInstanceOf[CoarseCookSchedulerBackend],
             "The current scheduler backend is not Cook.")
-    val backend = sc.schedulerBackend.asInstanceOf[CoarseCookSchedulerBackend]
-    backend.getAliveExecutorIds
+    sc.schedulerBackend.asInstanceOf[CoarseCookSchedulerBackend].getExecutorIds()
   }
 }
 

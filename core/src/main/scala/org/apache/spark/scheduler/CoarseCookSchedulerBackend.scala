@@ -374,26 +374,6 @@ class CoarseCookSchedulerBackend(
       }
     }
 
-  /**
-    * @return executor ids of alive executors.
-    */
-  def getAliveExecutorIds: Seq[String] = {
-    try {
-      if (driverEndpoint != null) {
-        driverEndpoint.askWithRetry[Seq[String]](RetrieveAliveExecutorIds)
-      } else {
-        logWarning(
-          "The driver is either not ready or has been shut down." +
-            " Can't retrieve the alive executor ids.")
-        Seq.empty[String]
-      }
-    } catch {
-      case e: Exception =>
-        logError("Failed to retrieve alive executor id(s)", e)
-        Seq.empty[String]
-    }
-  }
-
   override def doKillExecutors(executorIds: Seq[String]): Future[Boolean] =
     Future.successful {
       // No need to adjust `executorLimitOption` since the AllocationManager already communicated
