@@ -40,6 +40,7 @@ import org.json.JSONObject
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcAddress
 import org.apache.spark.SparkContext
+import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages.RetrieveAliveExecutorIds
 import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend
 import org.apache.spark.scheduler.cluster.mesos.{
   MesosCoarseGrainedSchedulerBackend,
@@ -88,7 +89,7 @@ class CoarseCookSchedulerBackend(
     with Logging
     with MesosSchedulerUtils {
 
-  private[this] val schedulerConf = CookSchedulerConfiguration(conf)
+  private[this] val schedulerConf = CookSchedulerContext.get(sc)
 
   /**
     * The total number of executors we aim to have. Undefined when not using dynamic allocation.
@@ -372,6 +373,26 @@ class CoarseCookSchedulerBackend(
         }
       }
     }
+
+  /**
+    * @return executor ids of alive executors.
+    */
+  def getAliveExecutorIds: Seq[String] = {
+    try {
+      if (driverEndpoint != null) {
+        driverEndpoint.askWithRetry[Seq[String]](RetrieveAliveExecutorIds)
+      } else {
+        logWarning(
+          "The driver is either not ready or has been shut down." +
+            " Can't retrieve the alive executor ids.")
+        Seq.empty[String]
+      }
+    } catch {
+      case e: Exception =>
+        logError("Failed to retrieve alive executor id(s)", e)
+        Seq.empty[String]
+    }
+  }
 
   override def doKillExecutors(executorIds: Seq[String]): Future[Boolean] =
     Future.successful {

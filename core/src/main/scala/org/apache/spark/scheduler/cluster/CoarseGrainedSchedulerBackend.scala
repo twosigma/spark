@@ -208,6 +208,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
       case RetrieveSparkProps =>
         context.reply(sparkProperties)
+
+      case RetrieveAliveExecutorIds =>
+        context.reply(getExecutorIds().filter(executorIsAlive))
     }
 
     // Make fake resource offers on all executors

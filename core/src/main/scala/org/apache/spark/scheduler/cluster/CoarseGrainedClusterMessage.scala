@@ -32,6 +32,8 @@ private[spark] object CoarseGrainedClusterMessages {
 
   case object RetrieveLastAllocatedExecutorId extends CoarseGrainedClusterMessage
 
+  case object RetrieveAliveExecutorIds extends CoarseGrainedClusterMessage
+
   // Driver to executors
   case class LaunchTask(data: SerializableBuffer) extends CoarseGrainedClusterMessage
 

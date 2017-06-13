@@ -17,11 +17,13 @@
 
 package org.apache.spark.scheduler
 
-import org.apache.spark.SparkConf
+import org.apache.spark.{SparkConf, SparkContext}
 
-case class CookSchedulerConfiguration(
-    @transient conf: SparkConf
+case class CookSchedulerContext(
+    @transient sc: SparkContext
 ) {
+
+  @transient val conf: SparkConf = sc.getConf
 
   val SPARK_CORES_MAX = "spark.cores.max"
 
@@ -61,4 +63,37 @@ case class CookSchedulerConfiguration(
 
   val cookJobNamePrefix: String =
     conf.get(SPARK_COOK_JOB_NAME_PREFIX, "sparkjob")
+
+  /**
+    * @return executor ids of alive executors.
+    */
+  def getAliveExecutorIds: Seq[String] = {
+    require(sc.schedulerBackend.isInstanceOf[CoarseCookSchedulerBackend],
+            "The current scheduler backend is not Cook.")
+    val backend = sc.schedulerBackend.asInstanceOf[CoarseCookSchedulerBackend]
+    backend.getAliveExecutorIds
+  }
+}
+
+object CookSchedulerContext {
+
+  @volatile
+  private[this] var context: CookSchedulerContext = _
+
+  private[spark] def get(sc: SparkContext): CookSchedulerContext = {
+    if (context == null) {
+      this.synchronized {
+        if (context == null) {
+          context = new CookSchedulerContext(sc)
+        }
+      }
+    }
+    context
+  }
+
+  def get(): CookSchedulerContext = {
+    require(context != null,
+            "CookSchedulerContext haven't been initialized yet.")
+    context
+  }
 }
