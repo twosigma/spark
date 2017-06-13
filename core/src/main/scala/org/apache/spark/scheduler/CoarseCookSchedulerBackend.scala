@@ -109,8 +109,7 @@ class CoarseCookSchedulerBackend(
     * when creating `SparkContext` via `ExecutorAllocationManager.start()`;
     * otherwise, it is set via the `start()` of this backend.
     */
-  private[mesos] def executorLimit: Int =
-    executorLimitOption.getOrElse(Int.MaxValue)
+  private def executorLimit: Int = executorLimitOption.getOrElse(Int.MaxValue)
 
   /**
     * The set of UUIDs for non-completed jobs.
@@ -438,7 +437,6 @@ class CoarseCookSchedulerBackend(
                 executorIdToJobUUID += executorId -> job.getUUID
                 nonCompletedJobUUIDs += job.getUUID
             }
-            totalExecutorsAcquired += requestedExecutors
         }
       }
     }
