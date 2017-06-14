@@ -46,7 +46,7 @@ if sys.version_info[:2] <= (2, 6):
 else:
     import unittest
 
-from pyspark.sql import SparkSession, HiveContext, Column, Row
+from pyspark.sql import SparkSession, SQLContext, HiveContext, Column, Row
 from pyspark.sql.types import *
 from pyspark.sql.types import UserDefinedType, _infer_type
 from pyspark.tests import ReusedPySparkTestCase, SparkSubmitTests
@@ -199,6 +199,11 @@ class SQLTests(ReusedPySparkTestCase):
         ReusedPySparkTestCase.tearDownClass()
         cls.spark.stop()
         shutil.rmtree(cls.tempdir.name, ignore_errors=True)
+
+    def test_sqlcontext_reuses_sparksession(self):
+        sqlContext1 = SQLContext(self.sc)
+        sqlContext2 = SQLContext(self.sc)
+        self.assertTrue(sqlContext1.sparkSession is sqlContext2.sparkSession)
 
     def test_row_should_be_read_only(self):
         row = Row(a=1, b=2)
