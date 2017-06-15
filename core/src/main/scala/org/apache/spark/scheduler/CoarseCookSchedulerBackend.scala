@@ -220,8 +220,9 @@ class CoarseCookSchedulerBackend(
 
     val uriValues = commandInfo.getUrisList.asScala.map(_.getValue)
 
-    val keystorePullCommand = schedulerContext.executorKeyStoreURIOption.map { uri =>
-      s"${fetchURI(uri)} && mv $$(basename $uri) spark-executor-keystore"
+    val keystorePullCommand = schedulerContext.executorKeyStoreURIOption.map {
+      uri =>
+        s"${fetchURI(uri)} && mv $$(basename $uri) spark-executor-keystore"
     }
 
     val uriFetchCommand =
@@ -310,7 +311,7 @@ class CoarseCookSchedulerBackend(
     if (!ret && cur - lastIsReadyLog > 5000) {
       logInfo(
         s"Backend is not yet ready. Total acquired executors [$totalExecutorsAcquired] " +
-          s"vs executor limit $executorLimit")
+          s"vs executor limit [$executorLimit]")
       lastIsReadyLog = cur
     }
     ret
@@ -413,6 +414,10 @@ class CoarseCookSchedulerBackend(
   private def shouldRequestExecutors(): Boolean =
     totalExecutorsAcquired < executorLimit
 
+  private def executorStatusMessage(): String =
+    s"Currently, the total acquired executors is [$totalExecutorsAcquired] " +
+      s"and the executor limit is [$executorLimit]."
+
   private def requestExecutorsIfNecessary(): Unit =
     if (shouldRequestExecutors()) {
       // TODO: could be a race condition here as another thread may change `executorLimitOption`
@@ -431,10 +436,10 @@ class CoarseCookSchedulerBackend(
           jobClient
             .submit(executorIdAndJob.map(_._2).asJava, jobListener)) match {
           case Failure(e) =>
-            logWarning("Failed to request executors from Cook.", e)
+            logWarning(
+              s"Failed to request executors from Cook. ${executorStatusMessage()}",
+              e)
           case Success(_) =>
-            logInfo(
-              s"Successfully requested ${executorIdAndJob.size} executors from ")
             executorIdAndJob.foreach {
               case (executorId, job) =>
                 logInfo(s"Creating job with id: ${job.getUUID} " +
@@ -442,6 +447,9 @@ class CoarseCookSchedulerBackend(
                 executorIdToJobUUID += executorId -> job.getUUID
                 nonCompletedJobUUIDs += job.getUUID
             }
+            logInfo(
+              s"Successfully requested ${executorIdAndJob.size} executors from Cook. " +
+                executorStatusMessage())
         }
       }
     }
