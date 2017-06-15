@@ -25,6 +25,9 @@ case class CookSchedulerContext(
 
   @transient val conf: SparkConf = sc.getConf
 
+  // ==========================================================================
+  // Configurations that will be used by Cook scheduler backend
+
   val SPARK_CORES_MAX = "spark.cores.max"
 
   val SPARK_EXECUTOR_CORES = "spark.executor.cores"
@@ -48,6 +51,17 @@ case class CookSchedulerContext(
   val SPARK_EXECUTOR_COOK_PRINCIPALS_THAT_CAN_VIEW =
     s"spark.executor.cook.$PRINCIPALS_THAT_CAN_VIEW"
 
+  val SPARK_EXECUTOR_KEY_STORE_FILENAME = "spark.executor.keyStoreFilename"
+
+  val SPARK_COOK_SHIPPED_TARBALLS = "spark.cook.shippedTarballs"
+
+  val SPARK_EXECUTOR_COOK_HDFS_CONF_REMOTE =
+    "spark.executor.cook.hdfs.conf.remote"
+
+  val SPARK_PYTHON_COMMAND = "spark.python.command"
+
+  // ==========================================================================
+
   val minRegisteredResourceRatio: Double = math.min(
     1,
     conf.getDouble(SPARK_SCHEDULER_MIN_REGISTERED_RESOURCE_RATIO, 0))
@@ -64,14 +78,38 @@ case class CookSchedulerContext(
   val cookJobNamePrefix: String =
     conf.get(SPARK_COOK_JOB_NAME_PREFIX, "sparkjob")
 
+  val executorCookContainer: Option[String] =
+    conf.getOption(SPARK_EXECUTOR_COOK_CONTAINER)
+
+  val executorKeyStoreUri: Option[String] =
+    conf.getOption(SPARK_EXECUTOR_KEY_STORE_FILENAME)
+
+  val executorRemoteHDFSConf: Option[String] =
+    conf.getOption(SPARK_EXECUTOR_COOK_HDFS_CONF_REMOTE)
+
+  val cookShippedTarBalls: Seq[String] =
+    conf
+      .getOption(SPARK_COOK_SHIPPED_TARBALLS)
+      .fold(Seq[String]()) { tgz =>
+        tgz.split(",").map(_.trim).toList
+      }
+
+  val cookApplicationId: Option[String] =
+    conf.getOption(SPARK_COOK_APPLICATION_ID)
+
+  val sparkPythonCommand: Option[String] = conf.getOption(SPARK_PYTHON_COMMAND)
+
   /**
     * @return executor ids of alive executors.
     */
   def getExecutorIds: Seq[String] = {
     require(sc.schedulerBackend.isInstanceOf[CoarseCookSchedulerBackend],
             "The current scheduler backend is not Cook.")
-    sc.schedulerBackend.asInstanceOf[CoarseCookSchedulerBackend].getExecutorIds()
+    sc.schedulerBackend
+      .asInstanceOf[CoarseCookSchedulerBackend]
+      .getExecutorIds()
   }
+
 }
 
 object CookSchedulerContext {
