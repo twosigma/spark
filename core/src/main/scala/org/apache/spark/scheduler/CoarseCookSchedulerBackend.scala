@@ -176,7 +176,7 @@ class CoarseCookSchedulerBackend(
     totalExecutorsAcquired >= executorLimit * schedulerContext.minRegisteredResourceRatio
 
   override def applicationId(): String =
-    schedulerContext.cookApplicationId.getOrElse(super.applicationId())
+    schedulerContext.cookApplicationIdOption.getOrElse(super.applicationId())
 
   override def applicationAttemptId(): Option[String] = Some(applicationId())
 
@@ -193,7 +193,7 @@ class CoarseCookSchedulerBackend(
       .build()
 
     val commandInfo =
-      mesosSchedulerBackend.createCommand(fakeOffer, cores.toInt, executorId)
+      mesosSchedulerBackend.createCommand(fakeOffer, cores, executorId)
     val commandString = commandInfo.getValue
     val environmentInfo = commandInfo.getEnvironment
 
@@ -212,7 +212,7 @@ class CoarseCookSchedulerBackend(
           Seq(s"export SPARK_DRIVER_PULL_HOST=${server.hostname}",
               s"export SPARK_DRIVER_PULL_PORT=$port")
         } ++
-        schedulerContext.sparkPythonCommand.fold(Seq[String]()) {
+        schedulerContext.sparkPythonCommandOption.fold(Seq[String]()) {
           pythonCommand =>
             Seq(s"echo $pythonCommand \\$$@ > python_command",
                 "chmod 755 python_command")
@@ -220,7 +220,7 @@ class CoarseCookSchedulerBackend(
 
     val uriValues = commandInfo.getUrisList.asScala.map(_.getValue)
 
-    val keystorePullCommand = schedulerContext.executorKeyStoreUri.map { uri =>
+    val keystorePullCommand = schedulerContext.executorKeyStoreURIOption.map { uri =>
       s"${fetchURI(uri)} && mv $$(basename $uri) spark-executor-keystore"
     }
 
@@ -246,7 +246,7 @@ class CoarseCookSchedulerBackend(
     )
 
     val remoteConfFetchCommand =
-      schedulerContext.executorRemoteHDFSConf.fold(Seq.empty[String]) {
+      schedulerContext.executorRemoteHDFSConfOption.fold(Seq.empty[String]) {
         remoteHDFSConf =>
           val name = Paths.get(remoteHDFSConf).getFileName
           Seq(
@@ -290,7 +290,7 @@ class CoarseCookSchedulerBackend(
       .disableMeaCulpaRetries()
       .setRetries(1)
 
-    schedulerContext.executorCookContainer.foreach { container =>
+    schedulerContext.executorCookContainerOption.foreach { container =>
       builder.setContainer(new JSONObject(container))
     }
 

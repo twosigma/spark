@@ -78,14 +78,20 @@ case class CookSchedulerContext(
   val cookJobNamePrefix: String =
     conf.get(SPARK_COOK_JOB_NAME_PREFIX, "sparkjob")
 
-  val executorCookContainer: Option[String] =
+  val executorCookContainerOption: Option[String] =
     conf.getOption(SPARK_EXECUTOR_COOK_CONTAINER)
 
-  val executorKeyStoreUri: Option[String] =
+  val executorKeyStoreURIOption: Option[String] =
     conf.getOption(SPARK_EXECUTOR_KEY_STORE_FILENAME)
 
-  val executorRemoteHDFSConf: Option[String] =
+  val executorRemoteHDFSConfOption: Option[String] =
     conf.getOption(SPARK_EXECUTOR_COOK_HDFS_CONF_REMOTE)
+
+  val cookApplicationIdOption: Option[String] =
+    conf.getOption(SPARK_COOK_APPLICATION_ID)
+
+  val sparkPythonCommandOption: Option[String] =
+    conf.getOption(SPARK_PYTHON_COMMAND)
 
   val cookShippedTarBalls: Seq[String] =
     conf
@@ -93,11 +99,6 @@ case class CookSchedulerContext(
       .fold(Seq[String]()) { tgz =>
         tgz.split(",").map(_.trim).toList
       }
-
-  val cookApplicationId: Option[String] =
-    conf.getOption(SPARK_COOK_APPLICATION_ID)
-
-  val sparkPythonCommand: Option[String] = conf.getOption(SPARK_PYTHON_COMMAND)
 
   /**
     * @return executor ids of alive executors.
