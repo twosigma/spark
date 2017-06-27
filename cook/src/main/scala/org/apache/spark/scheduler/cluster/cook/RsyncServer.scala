@@ -21,20 +21,20 @@ import java.io.{File, PrintWriter}
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 
-import org.apache.spark.internal.Logging
-
 import scala.concurrent.{Future, Promise}
 import scala.sys.process.{BasicIO, Process, ProcessLogger}
 import scala.util.Try
 
-/**
-  * Created by hkothari on 10/14/16.
-  */
-private[spark] class RsyncServer(rsyncDir: String, rsyncExportDirs: Option[String])
-  extends Logging
-{
-  private[this] val currentUsername = sys.props.get("user.name").getOrElse("nobody")
-  private[this] val currentHostname = java.net.InetAddress.getLocalHost.getHostName
+import org.apache.spark.internal.Logging
+
+private[spark] class RsyncServer(
+    rsyncDir: String,
+    rsyncExportDirs: Option[String]
+) extends Logging {
+  private[this] val currentUsername =
+    sys.props.get("user.name").getOrElse("nobody")
+  private[this] val currentHostname =
+    java.net.InetAddress.getLocalHost.getHostName
   val hostname = s"$currentUsername.$currentHostname"
 
   private[this] val rsyncConf = s"""
@@ -44,14 +44,14 @@ private[spark] class RsyncServer(rsyncDir: String, rsyncExportDirs: Option[Strin
      reverse lookup = no
      read only = yes
 """ + rsyncExportDirs.fold("") { exportDir =>
-      s"""
+    s"""
 [${exportDir.split("/").last}]
      path = $exportDir
      use chroot = no
      reverse lookup = no
      read only = yes
 """
-    }
+  }
 
   private[this] val rsyncConfFile: File = {
     val tmpFile = File.createTempFile("spark-rsync", ".tmp")
@@ -84,7 +84,8 @@ private[spark] class RsyncServer(rsyncDir: String, rsyncExportDirs: Option[Strin
     // rsync is used to synchronize the data
     val tmpFile = File.createTempFile("knc-spark-rsync", ".tmp")
     tmpFile.deleteOnExit()
-    Files.setPosixFilePermissions(tmpFile.toPath, PosixFilePermissions.fromString("rwx------"))
+    Files.setPosixFilePermissions(tmpFile.toPath,
+                                  PosixFilePermissions.fromString("rwx------"))
     new PrintWriter(tmpFile) {
       val credVariable = "$KNC_CREDS"
       write(s"""#!/bin/sh
@@ -104,12 +105,14 @@ esac""")
 
   private[this] val rsyncPort: Promise[Int] = Promise()
   private[this] val rsyncProcess: Process = {
-    val keytabCommand = s"/usr/sbin/krb5_keytab spark-rsync/$currentUsername.$currentHostname"
+    val keytabCommand =
+      s"/usr/sbin/krb5_keytab spark-rsync/$currentUsername.$currentHostname"
     val keytabResult = Process(keytabCommand).!
 
     if (keytabResult != 0) {
-      throw new Exception("Unable to create Kerberos keytab for " +
-        s"spark-rsync/$currentUsername.$currentHostname")
+      throw new Exception(
+        "Unable to create Kerberos keytab for " +
+          s"spark-rsync/$currentUsername.$currentHostname")
     }
 
     // socat will output a line to stderr that tells us where it is listening
@@ -138,12 +141,14 @@ esac""")
     val proc = Process(
       Seq(
         "/usr/bin/socat",
-        "-d", "-d",
+        "-d",
+        "-d",
         "TCP-LISTEN:0,fork",
         "EXEC:\"/usr/bin/knc -il " + kncShellFile.getAbsolutePath + "\""
       ),
       None,
-      "KRB5_KTNAME" -> s"/var/spool/keytabs/$currentUsername").run(io)
+      "KRB5_KTNAME" -> s"/var/spool/keytabs/$currentUsername"
+    ).run(io)
     logDebug(s"Started rsync process")
     proc
   }
