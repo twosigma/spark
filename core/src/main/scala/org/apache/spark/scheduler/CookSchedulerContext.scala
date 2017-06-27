@@ -73,6 +73,8 @@ case class CookSchedulerContext(
 
   val maxCores: Int = conf.getInt(SPARK_CORES_MAX, 0)
 
+  val maxExecutors: Int = Math.ceil(maxCores / coresPerCookJob).toInt
+
   val cookJobPriority: Int = conf.getInt(SPARK_COOK_PRIORITY, 75)
 
   val cookJobNamePrefix: String =
@@ -93,7 +95,7 @@ case class CookSchedulerContext(
   val sparkPythonCommandOption: Option[String] =
     conf.getOption(SPARK_PYTHON_COMMAND)
 
-  val cookShippedTarBalls: Seq[String] =
+  val cookShippedTarballs: Seq[String] =
     conf
       .getOption(SPARK_COOK_SHIPPED_TARBALLS)
       .fold(Seq[String]()) { tgz =>

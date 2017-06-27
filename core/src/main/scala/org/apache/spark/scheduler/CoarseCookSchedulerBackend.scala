@@ -79,6 +79,24 @@ object CoarseCookSchedulerBackend {
   }
 }
 
+/*
+ * A SchedulerBackend that runs tasks using Cook, using "coarse-grained" tasks, where it holds
+ * onto Cook instances for the duration of the Spark job instead of relinquishing cores whenever
+ * a task is done. It launches Spark tasks within the coarse-grained Cook instances using the
+ * CoarseGrainedSchedulerBackend mechanism. This class is useful for lower and more predictable
+ * latency.
+ *
+ * Since Spark 2.0.0, executor id must be an integer even though its type is String. This backend
+ * uses task id which is also an integer created by
+ * {{{
+ *   MesosCoarseGrainedSchedulerBackend.newMesosTaskId
+ * }}}
+ * as executor id.
+ *
+ * To ensure the mapping from executor id to its Cook job instance is 1-1 and onto,
+ * we only allow one instance per Cook job and we are using the mapping from
+ * <executor id> -> <cook job id> to track this relationship.
+ */
 class CoarseCookSchedulerBackend(
     scheduler: TaskSchedulerImpl,
     sc: SparkContext,
@@ -109,7 +127,13 @@ class CoarseCookSchedulerBackend(
     * when creating `SparkContext` via `ExecutorAllocationManager.start()`;
     * otherwise, it is set via the `start()` of this backend.
     */
-  private def executorLimit: Int = executorLimitOption.getOrElse(Int.MaxValue)
+  private def executorLimit: Int = this.synchronized {
+    executorLimitOption.getOrElse(Int.MaxValue)
+  }
+
+  private def setExecutorLimit(limit: Int): Unit = this.synchronized {
+    executorLimitOption = Some(limit)
+  }
 
   /**
     * The set of UUIDs for non-completed jobs.
@@ -167,10 +191,7 @@ class CoarseCookSchedulerBackend(
   }
 
   private[this] val mesosSchedulerBackend =
-    new MesosCoarseGrainedSchedulerBackend(scheduler,
-                                           sc,
-                                           "",
-                                           sc.env.securityManager)
+    new MesosCoarseGrainedSchedulerBackend(scheduler, sc, "", sc.env.securityManager)
 
   override def sufficientResourcesRegistered(): Boolean =
     totalExecutorsAcquired >= executorLimit * schedulerContext.minRegisteredResourceRatio
@@ -231,7 +252,7 @@ class CoarseCookSchedulerBackend(
           " || (echo \"ERROR FETCHING\" && exit 1)"
       }
 
-    val shippedTarballsCommand = schedulerContext.cookShippedTarBalls.map {
+    val shippedTarballsCommand = schedulerContext.cookShippedTarballs.map {
       uri =>
         s"[ ! -e $$(basename $uri) ] && ${fetchURI(uri)} && tar -xvzf $$(basename $uri)"
     }
@@ -407,7 +428,7 @@ class CoarseCookSchedulerBackend(
     Future.successful {
       logInfo(
         s"Setting total amount of executors to request to $requestedTotal")
-      executorLimitOption = Some(requestedTotal)
+      setExecutorLimit(requestedTotal)
       true
     }
 
@@ -420,7 +441,6 @@ class CoarseCookSchedulerBackend(
 
   private def requestExecutorsIfNecessary(): Unit =
     if (shouldRequestExecutors()) {
-      // TODO: could be a race condition here as another thread may change `executorLimitOption`
       val requestedExecutors = executorLimit - totalExecutorsAcquired
 
       if (requestedExecutors > 0) {
@@ -475,15 +495,12 @@ class CoarseCookSchedulerBackend(
   override def start(): Unit = {
     super.start()
 
-    // We relay on client to set the `executorLimitOption` via calling `doRequestTotalExecutors`
+    // We rely on client to set the `executorLimitOption` via calling `doRequestTotalExecutors`
     // indirectly/directly. In the case of dynamic allocation, it is done when creating
     // `SparkContext` and calling `ExecutorAllocationManager.start()`, otherwise, we need to
     // set it explicitly.
     if (!schedulerContext.isDynamicAllocationEnabled) {
-      doRequestTotalExecutors(
-        Math
-          .ceil(schedulerContext.maxCores / schedulerContext.coresPerCookJob)
-          .toInt)
+      doRequestTotalExecutors(schedulerContext.maxExecutors)
     }
 
     requestExecutorsIfNecessary()
