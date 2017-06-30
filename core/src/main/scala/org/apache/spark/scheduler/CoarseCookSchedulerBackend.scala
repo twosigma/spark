@@ -158,7 +158,6 @@ class CoarseCookSchedulerBackend(
     */
   private def totalExecutorsRegistered: Int = getExecutorIds().length
 
-
   /**
     * The set of UUIDs for the jobs that are aborted intentionally, e.g.
     * via dynamic allocation. This data is only for logging purpose.
