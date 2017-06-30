@@ -193,8 +193,14 @@ class CoarseCookSchedulerBackend(
   private[this] val mesosSchedulerBackend =
     new MesosCoarseGrainedSchedulerBackend(scheduler, sc, "", sc.env.securityManager)
 
-  override def sufficientResourcesRegistered(): Boolean =
-    totalExecutorsAcquired >= executorLimit * schedulerContext.minRegisteredResourceRatio
+  override def sufficientResourcesRegistered(): Boolean = {
+    // We can't use `totalExecutorsAcquired` as the number of registered executors because
+    // delay between requesting resources from Cook and launching jobs after that.
+    // However, `getExecutorIds()` only returns the list of registered executor ids and
+    // thus could be here.
+    val registeredExecutors = getExecutorIds().length
+    registeredExecutors >= executorLimit * schedulerContext.minRegisteredResourceRatio
+  }
 
   override def applicationId(): String =
     schedulerContext.cookApplicationIdOption.getOrElse(super.applicationId())
