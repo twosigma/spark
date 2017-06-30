@@ -63,8 +63,8 @@ case class CookSchedulerContext(
   // ==========================================================================
 
   val minRegisteredResourceRatio: Double = math.min(
-    1,
-    conf.getDouble(SPARK_SCHEDULER_MIN_REGISTERED_RESOURCE_RATIO, 0))
+    1d,
+    conf.getDouble(SPARK_SCHEDULER_MIN_REGISTERED_RESOURCE_RATIO, 0d))
 
   val isDynamicAllocationEnabled: Boolean =
     conf.getBoolean(SPARK_DYNAMIC_ALLOCATION_ENABLED, defaultValue = false)
