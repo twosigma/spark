@@ -195,9 +195,11 @@ class CoarseCookSchedulerBackend(
 
   override def sufficientResourcesRegistered(): Boolean = {
     // We can't use `totalExecutorsAcquired` as the number of registered executors because
-    // delay between requesting resources from Cook and launching jobs after that.
+    // the latency between requesting resources from Cook and launching jobs after that.
     // However, `getExecutorIds()` only returns the list of registered executor ids and
-    // thus could be here.
+    // thus could be used here.
+    // This is only used by TaskScheduler for checking if the scheduler backend is ready
+    // before sending the first batch of tasks.
     val registeredExecutors = getExecutorIds().length
     registeredExecutors >= executorLimit * schedulerContext.minRegisteredResourceRatio
   }
