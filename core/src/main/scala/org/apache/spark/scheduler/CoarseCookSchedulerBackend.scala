@@ -146,12 +146,12 @@ class CoarseCookSchedulerBackend(
 
   /**
     * Note that the mapping between Cook job and executor is 1-1 and onto, thus
-    * the number of acquired executors equals to the number non-completed jobs.
+    * the number of requested executors equals to the number non-completed jobs.
     */
-  private def totalExecutorsAcquired: Int = nonCompletedJobUUIDs.size
+  private def totalExecutorsRequested: Int = nonCompletedJobUUIDs.size
 
   /**
-    *  We can't use `totalExecutorsAcquired` as the number of registered executors because
+    *  We can't use `totalExecutorsRequested` as the number of registered executors because
     *  the latency between requesting resources from Cook and launching jobs after that.
     *  However, `getExecutorIds()` only returns the list of registered executor ids and
     *  thus could be used for querying the number of registered executors.
@@ -342,7 +342,7 @@ class CoarseCookSchedulerBackend(
     if (!ret && cur - lastIsReadyLog > 5000) {
       logInfo(
         s"Scheduler backend is not yet ready: " +
-          s"number of acquired executors [$totalExecutorsAcquired] vs " +
+          s"number of requested executors [$totalExecutorsRequested] vs " +
           s"number of registered executors [$totalExecutorsRegistered] vs " +
           s"executor limit [$executorLimit].")
       lastIsReadyLog = cur
@@ -445,15 +445,15 @@ class CoarseCookSchedulerBackend(
     }
 
   private def shouldRequestExecutors(): Boolean =
-    totalExecutorsAcquired < executorLimit
+    totalExecutorsRequested < executorLimit
 
   private def executorStatusMessage(): String =
-    s"Currently, the total acquired executors is [$totalExecutorsAcquired] " +
+    s"Currently, the total requested executors is [$totalExecutorsRequested] " +
       s"and the executor limit is [$executorLimit]."
 
   private def requestExecutorsIfNecessary(): Unit =
     if (shouldRequestExecutors()) {
-      val requestedExecutors = executorLimit - totalExecutorsAcquired
+      val requestedExecutors = executorLimit - totalExecutorsRequested
 
       if (requestedExecutors > 0) {
         val executorIdAndJob = (1 to requestedExecutors).map { _ =>
