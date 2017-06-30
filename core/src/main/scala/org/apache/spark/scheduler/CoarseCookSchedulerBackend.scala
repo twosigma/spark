@@ -151,6 +151,15 @@ class CoarseCookSchedulerBackend(
   private def totalExecutorsAcquired: Int = nonCompletedJobUUIDs.size
 
   /**
+    *  We can't use `totalExecutorsAcquired` as the number of registered executors because
+    *  the latency between requesting resources from Cook and launching jobs after that.
+    *  However, `getExecutorIds()` only returns the list of registered executor ids and
+    *  thus could be used for querying the number of registered executors.
+    */
+  private def totalExecutorsRegistered: Int = getExecutorIds().length
+
+
+  /**
     * The set of UUIDs for the jobs that are aborted intentionally, e.g.
     * via dynamic allocation. This data is only for logging purpose.
     */
@@ -193,16 +202,10 @@ class CoarseCookSchedulerBackend(
   private[this] val mesosSchedulerBackend =
     new MesosCoarseGrainedSchedulerBackend(scheduler, sc, "", sc.env.securityManager)
 
-  override def sufficientResourcesRegistered(): Boolean = {
-    // We can't use `totalExecutorsAcquired` as the number of registered executors because
-    // the latency between requesting resources from Cook and launching jobs after that.
-    // However, `getExecutorIds()` only returns the list of registered executor ids and
-    // thus could be used here.
-    // This is only used by TaskScheduler for checking if the scheduler backend is ready
-    // before sending the first batch of tasks.
-    val registeredExecutors = getExecutorIds().length
-    registeredExecutors >= executorLimit * schedulerContext.minRegisteredResourceRatio
-  }
+  // This is only used by TaskScheduler for checking if the scheduler backend is ready
+  // before sending the first batch of tasks.
+  override def sufficientResourcesRegistered(): Boolean =
+    totalExecutorsRegistered >= executorLimit * schedulerContext.minRegisteredResourceRatio
 
   override def applicationId(): String =
     schedulerContext.cookApplicationIdOption.getOrElse(super.applicationId())
@@ -339,8 +342,10 @@ class CoarseCookSchedulerBackend(
     val cur = System.currentTimeMillis
     if (!ret && cur - lastIsReadyLog > 5000) {
       logInfo(
-        s"Backend is not yet ready. Total acquired executors [$totalExecutorsAcquired] " +
-          s"vs executor limit [$executorLimit]")
+        s"Scheduler backend is not yet ready: " +
+          s"number of acquired executors [$totalExecutorsAcquired] vs " +
+          s"number of registered executors [$totalExecutorsRegistered] vs " +
+          s"executor limit [$executorLimit].")
       lastIsReadyLog = cur
     }
     ret
