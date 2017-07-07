@@ -306,6 +306,12 @@ class CoarseCookSchedulerBackend(
       s"[ -z $$KEEP_SPARK_LOCAL_TARS ] || rm -f $$(basename $uri)"
     }
 
+    val logUrlCommand = Seq(
+      "export BASE_SPARK_LOG_URL=\"http://`hostname`:5051/files/download?path=$MESOS_SANDBOX\"",
+      "export SPARK_LOG_URL_STDERR=\"$BASE_SPARK_LOG_URL/stderr\"",
+      "export SPARK_LOG_URL_STDOUT=\"$BASE_SPARK_LOG_URL/stdout\""
+    )
+
     val commandSeq =
       debugCommand ++
         envSettingCommand ++
@@ -313,6 +319,7 @@ class CoarseCookSchedulerBackend(
         shippedTarballsCommand ++
         remoteConfFetchCommand ++
         keystorePullCommand.map(Seq(_)).getOrElse(Seq[String]()) ++
+        logUrlCommand ++
         Seq("set", commandString) ++
         cleanup
 
