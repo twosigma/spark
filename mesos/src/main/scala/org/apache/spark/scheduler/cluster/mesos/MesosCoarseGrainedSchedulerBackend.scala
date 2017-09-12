@@ -229,7 +229,6 @@ private[spark] class MesosCoarseGrainedSchedulerBackend(
         s" --executor-id $taskId" +
         s" --hostname ${offer.getHostname}" +
         s" --cores $numCores" +
-        s" --app-id $appId")
         s" --app-id $cookAppId")
       command.addUris(CommandInfo.URI.newBuilder().setValue(uri.get))
     }
