@@ -2810,7 +2810,7 @@
     <profile>
       <id>cook</id>
       <modules>
-        <module>cook</module>
+        <module>resource-managers/cook</module>
       </modules>
     </profile>
 
