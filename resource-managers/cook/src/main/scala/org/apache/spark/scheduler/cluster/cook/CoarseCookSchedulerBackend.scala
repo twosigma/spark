@@ -240,6 +240,7 @@ class CoarseCookSchedulerBackend(
         .map { v =>
           s"export ${v.getName}=" + "\"" + v.getValue + "\""
         } ++
+        Seq(s"export SPARK_EXECUTOR_ID=$executorId") ++
         Seq("export SPARK_LOCAL_DIRS=$MESOS_SANDBOX/spark-temp",
             "mkdir $SPARK_LOCAL_DIRS") ++
         Seq(s"export SPARK_EXECUTOR_APP_ID=${applicationId()}") ++
