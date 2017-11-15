@@ -25,7 +25,7 @@ case class CookSchedulerContext(
 
   @transient val conf: SparkConf = sc.getConf
 
-  @transient val schedulerBackend: CoarseCookSchedulerBackend = {
+  @transient private[this] lazy val schedulerBackend: CoarseCookSchedulerBackend = {
     require(sc.schedulerBackend.isInstanceOf[CoarseCookSchedulerBackend],
       "The current scheduler backend is not Cook.")
     sc.schedulerBackend
