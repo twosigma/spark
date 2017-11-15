@@ -25,6 +25,13 @@ case class CookSchedulerContext(
 
   @transient val conf: SparkConf = sc.getConf
 
+  @transient val schedulerBackend: CoarseCookSchedulerBackend = {
+    require(sc.schedulerBackend.isInstanceOf[CoarseCookSchedulerBackend],
+      "The current scheduler backend is not Cook.")
+    sc.schedulerBackend
+      .asInstanceOf[CoarseCookSchedulerBackend]
+  }
+
   // ==========================================================================
   // Configurations that will be used by Cook scheduler backend
 
@@ -105,14 +112,18 @@ case class CookSchedulerContext(
   /**
     * @return executor ids of alive executors.
     */
-  def getExecutorIds: Seq[String] = {
-    require(sc.schedulerBackend.isInstanceOf[CoarseCookSchedulerBackend],
-            "The current scheduler backend is not Cook.")
-    sc.schedulerBackend
-      .asInstanceOf[CoarseCookSchedulerBackend]
-      .getExecutorIds()
-  }
+  def getExecutorIds: Seq[String] =
+    schedulerBackend.getExecutorIds()
 
+  /**
+    * Return the current executor limit which may be [[Int.MaxValue]]
+    * before properly initialized. For Cook, it is properly set
+    * when creating `SparkContext`.
+    *
+    * @return the current executor limit.
+    */
+  def getExecutorLimit: Int =
+    schedulerBackend.executorLimit
 }
 
 object CookSchedulerContext {
