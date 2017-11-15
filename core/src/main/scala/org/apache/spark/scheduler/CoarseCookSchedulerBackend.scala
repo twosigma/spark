@@ -127,7 +127,7 @@ class CoarseCookSchedulerBackend(
     * when creating `SparkContext` via `ExecutorAllocationManager.start()`;
     * otherwise, it is set via the `start()` of this backend.
     */
-  private def executorLimit: Int = this.synchronized {
+  private[scheduler] def executorLimit: Int = this.synchronized {
     executorLimitOption.getOrElse(Int.MaxValue)
   }
 
