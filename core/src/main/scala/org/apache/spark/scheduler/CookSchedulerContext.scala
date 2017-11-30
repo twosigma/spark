@@ -17,7 +17,13 @@
 
 package org.apache.spark.scheduler
 
-import org.apache.spark.{SparkConf, SparkContext}
+import com.twosigma.cook.jobclient.constraint.{Constraint, Constraints}
+import org.json.JSONArray
+
+import org.apache.spark.{
+  SparkConf,
+  SparkContext
+}
 
 case class CookSchedulerContext(
     @transient sc: SparkContext
@@ -45,6 +51,8 @@ case class CookSchedulerContext(
   val SPARK_COOK_PRIORITY = "spark.cook.priority"
 
   val SPARK_COOK_JOB_NAME_PREFIX = "spark.cook.job.name.prefix"
+
+  val SPARK_COOK_JOB_CONSTRAINT = "spark.cook.job.constraint"
 
   val SPARK_SCHEDULER_MIN_REGISTERED_RESOURCE_RATIO =
     "spark.scheduler.minRegisteredResourcesRatio"
@@ -110,6 +118,20 @@ case class CookSchedulerContext(
       }
 
   /**
+    * Parse the Cook constraints from Spark configurations.
+    *
+    * The Cook constraint(s) could be provided as follows.
+    *  - spark.cook.job.constraint=[foo,EQUALS,bar]
+    *  - spark.cook.job.constraint.1=[foo1,EQUALS,bar1]
+    *  - spark.cook.job.constraint.2=[foo2,EQUALS,bar2]
+    */
+  val cookJobConstraints: Seq[Constraint] = conf.getAll.filter { case (key, _) =>
+    key.matches("^spark\\.cook\\.job\\.constraint(\\.(\\d)+$|$)")
+  }.map { case (_, constraint) =>
+    Constraints.parseFrom(new JSONArray(constraint))
+  }
+
+  /**
     * @return executor ids of alive executors.
     */
   def getExecutorIds: Seq[String] =
@@ -144,7 +166,7 @@ object CookSchedulerContext {
 
   def get(): CookSchedulerContext = {
     require(context != null,
-            "CookSchedulerContext haven't been initialized yet.")
+      "CookSchedulerContext haven't been initialized yet.")
     context
   }
 }
