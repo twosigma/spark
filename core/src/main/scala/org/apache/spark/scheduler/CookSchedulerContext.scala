@@ -126,7 +126,7 @@ case class CookSchedulerContext(
     *  - spark.cook.job.constraint.2=[foo2,EQUALS,bar2]
     */
   val cookJobConstraints: Seq[Constraint] = conf.getAll.filter { case (key, _) =>
-    key.matches("^spark\\.cook\\.job\\.constraint(\\.(\\d)+$|$)")
+    key.matches("^spark\\.cook\\.job\\.constraint(\\.\\d+$|$)")
   }.map { case (_, constraint) =>
     Constraints.parseFrom(new JSONArray(constraint))
   }
