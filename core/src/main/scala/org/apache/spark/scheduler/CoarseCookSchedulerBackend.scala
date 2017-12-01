@@ -329,6 +329,7 @@ class CoarseCookSchedulerBackend(
       // The following two setting ensure each Cook job has only 1 instance.
       .disableMeaCulpaRetries()
       .setRetries(1)
+      .addConstraint(schedulerContext.cookJobConstraints.asJavaCollection)
 
     schedulerContext.executorCookContainerOption.foreach { container =>
       builder.setContainer(new JSONObject(container))
