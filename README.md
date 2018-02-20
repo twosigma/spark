@@ -8,7 +8,7 @@ git clone https://github.com/twosigma/Cook.git
 cd Cook/jobclient
 mvn package
 mvn org.apache.maven.plugins:maven-install-plugin:2.5.2:install-file \
-  -Dfile=target/cook-jobclient-0.1.2-SNAPSHOT.jar \
+  -Dfile=target/cook-jobclient-0.2.0-SNAPSHOT.jar \
   -DpomFile=pom.xml
 ```
 
@@ -28,9 +28,28 @@ Note: you need to make sure to include "cook" among the optional profiles (-P).
 The tarball will be created with the hadoop version and scala version
 embedded in the tarball name.  Additionally, we use `git describe
 --tags` to create the spark version, rather than just taking what's in
-the pom.xml files. This way, we get a tarball name that looks like
+the pom.xml files.  Check that the Apache Spark tag for your version is
+available, for example (for version 2.2.1):
+```
+git tag
+...
+v2.2.1
+...
+``` 
 
-    spark-2.0.2-31-g9dc4df0-bin-hadoop-provided-scala2.11.tgz
+If your tag does not exist yet, you can either:
+1. Fetch it from the upstream Apache Spark repository.  For example (for version 2.2.1):
+```
+git fetch https://github.com/apache/spark.git refs/tags/v2.2.1:refs/tags/v2.2.1
+```
+2. **Or**, manually tag the specific commit marking the version:
+```
+git tag -a v2.2.1 e30e2698a2 -m "Add tag for v2.2.1"
+```
+
+This way, we get a tarball name that looks like
+
+    spark-2.2.1-20-g9dc4df0-bin-hadoop-provided-scala2.11.tgz
 
 rather than
 
