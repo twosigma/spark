@@ -35,6 +35,14 @@
     <mesos.classifier>shaded-protobuf</mesos.classifier>
   </properties>
 
+  <repositories>
+    <repository>
+      <id>clojars</id>
+      <name>Clojars</name>
+      <url>http://clojars.org/repo</url>
+    </repository>
+  </repositories>
+
   <dependencies>
     <dependency>
       <groupId>twosigma</groupId>
@@ -55,11 +63,17 @@
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
-
+<!--
+    <dependency>
+      <groupId>io.riemann</groupId>
+      <artifactId>riemann-java-client-parent</artifactId>
+      <version>0.4.5</version>
+    </dependency>
+-->
     <dependency>
       <groupId>io.riemann</groupId>
       <artifactId>metrics3-riemann-reporter</artifactId>
-      <version>0.4.2</version>
+      <version>0.4.6</version>
     </dependency>
 
     <dependency>
