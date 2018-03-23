@@ -34,7 +34,7 @@ object ParserUtils {
   /** Get the command which created the token. */
   def command(ctx: ParserRuleContext): String = {
     val stream = ctx.getStart.getInputStream
-    stream.getText(Interval.of(0, stream.size() - 1))
+    stream.getText(Interval.of(0, stream.size()))
   }
 
   def operationNotAllowed(message: String, ctx: ParserRuleContext): Nothing = {
@@ -67,7 +67,7 @@ object ParserUtils {
   /** Get all the text which comes after the given token. */
   def remainder(token: Token): String = {
     val stream = token.getInputStream
-    val interval = Interval.of(token.getStopIndex + 1, stream.size() - 1)
+    val interval = Interval.of(token.getStopIndex + 1, stream.size())
     stream.getText(interval)
   }
 
