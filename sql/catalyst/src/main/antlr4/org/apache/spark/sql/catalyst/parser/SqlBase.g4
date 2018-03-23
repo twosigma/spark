@@ -60,10 +60,6 @@ singleDataType
     : dataType EOF
     ;
 
-singleTableSchema
-    : colTypeList EOF
-    ;
-
 statement
     : query                                                            #statementDefault
     | USE db=identifier                                                #use
@@ -989,7 +985,7 @@ INPATH: 'INPATH';
 
 STRING
     : '\'' ( ~('\''|'\\') | ('\\' .) )* '\''
-    | '"' ( ~('"'|'\\') | ('\\' .) )* '"'
+    | '\"' ( ~('\"'|'\\') | ('\\' .) )* '\"'
     ;
 
 BIGINT_LITERAL
