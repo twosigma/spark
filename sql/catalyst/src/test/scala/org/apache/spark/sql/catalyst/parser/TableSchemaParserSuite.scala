@@ -79,12 +79,10 @@ class TableSchemaParserSuite extends SparkFunSuite {
   }
 
   // Negative cases
-  test("Negative cases") {
-    assertError("")
-    assertError("a")
-    assertError("a INT b long")
-    assertError("a INT,, b long")
-    assertError("a INT, b long,,")
-    assertError("a INT, b long, c int,")
-  }
+  assertError("")
+  assertError("a")
+  assertError("a INT b long")
+  assertError("a INT,, b long")
+  assertError("a INT, b long,,")
+  assertError("a INT, b long, c int,")
 }
