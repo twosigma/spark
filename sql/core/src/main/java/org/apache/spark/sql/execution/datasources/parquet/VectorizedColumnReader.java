@@ -18,6 +18,7 @@
 package org.apache.spark.sql.execution.datasources.parquet;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.TimeZone;
 
 import org.apache.parquet.bytes.ByteBufferInputStream;
@@ -33,6 +34,7 @@ import org.apache.parquet.schema.OriginalType;
 import org.apache.parquet.schema.PrimitiveType;
 
 import org.apache.spark.sql.catalyst.util.DateTimeUtils;
+import org.apache.spark.sql.execution.datasources.SchemaColumnConvertNotSupportedException;
 import org.apache.spark.sql.execution.vectorized.WritableColumnVector;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.DecimalType;
@@ -234,6 +236,18 @@ public class VectorizedColumnReader {
   }
 
   /**
+   * Helper function to construct exception for parquet schema mismatch.
+   */
+  private SchemaColumnConvertNotSupportedException constructConvertNotSupportedException(
+      ColumnDescriptor descriptor,
+      WritableColumnVector column) {
+    return new SchemaColumnConvertNotSupportedException(
+      Arrays.toString(descriptor.getPath()),
+      descriptor.getType().toString(),
+      column.dataType().toString());
+  }
+
+  /**
    * Reads `num` values into column, decoding the values from `dictionaryIds` and `dictionary`.
    */
   private void decodeDictionaryIds(
@@ -263,7 +277,7 @@ public class VectorizedColumnReader {
             }
           }
         } else {
-          throw new UnsupportedOperationException("Unimplemented type: " + column.dataType());
+          throw constructConvertNotSupportedException(descriptor, column);
         }
         break;
 
@@ -284,7 +298,7 @@ public class VectorizedColumnReader {
             }
           }
         } else {
-          throw new UnsupportedOperationException("Unimplemented type: " + column.dataType());
+          throw constructConvertNotSupportedException(descriptor, column);
         }
         break;
 
@@ -323,7 +337,7 @@ public class VectorizedColumnReader {
             }
           }
         } else {
-          throw new UnsupportedOperationException();
+          throw constructConvertNotSupportedException(descriptor, column);
         }
         break;
       case BINARY:
@@ -362,7 +376,7 @@ public class VectorizedColumnReader {
             }
           }
         } else {
-          throw new UnsupportedOperationException();
+          throw constructConvertNotSupportedException(descriptor, column);
         }
         break;
 
@@ -399,7 +413,7 @@ public class VectorizedColumnReader {
       defColumn.readShorts(
           num, column, rowId, maxDefLevel, (VectorizedValuesReader) dataColumn);
     } else {
-      throw new UnsupportedOperationException("Unimplemented type: " + column.dataType());
+      throw constructConvertNotSupportedException(descriptor, column);
     }
   }
 
@@ -419,7 +433,7 @@ public class VectorizedColumnReader {
         }
       }
     } else {
-      throw new UnsupportedOperationException("Unsupported conversion to: " + column.dataType());
+      throw constructConvertNotSupportedException(descriptor, column);
     }
   }
 
@@ -430,7 +444,7 @@ public class VectorizedColumnReader {
       defColumn.readFloats(
           num, column, rowId, maxDefLevel, (VectorizedValuesReader) dataColumn);
     } else {
-      throw new UnsupportedOperationException("Unsupported conversion to: " + column.dataType());
+      throw constructConvertNotSupportedException(descriptor, column);
     }
   }
 
@@ -441,7 +455,7 @@ public class VectorizedColumnReader {
       defColumn.readDoubles(
           num, column, rowId, maxDefLevel, (VectorizedValuesReader) dataColumn);
     } else {
-      throw new UnsupportedOperationException("Unimplemented type: " + column.dataType());
+      throw constructConvertNotSupportedException(descriptor, column);
     }
   }
 
@@ -476,7 +490,7 @@ public class VectorizedColumnReader {
         }
       }
     } else {
-      throw new UnsupportedOperationException("Unimplemented type: " + column.dataType());
+      throw constructConvertNotSupportedException(descriptor, column);
     }
   }
 
@@ -515,7 +529,7 @@ public class VectorizedColumnReader {
         }
       }
     } else {
-      throw new UnsupportedOperationException("Unimplemented type: " + column.dataType());
+      throw constructConvertNotSupportedException(descriptor, column);
     }
   }
 
