@@ -19,9 +19,6 @@ package org.apache.spark.repl
 
 import java.io.BufferedReader
 
-// scalastyle:off println
-import scala.Predef.{println => _, _}
-// scalastyle:on println
 import scala.tools.nsc.Settings
 import scala.tools.nsc.interpreter.{ILoop, JPrintWriter}
 import scala.tools.nsc.util.stringFromStream
@@ -34,10 +31,6 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
     extends ILoop(in0, out) {
   def this(in0: BufferedReader, out: JPrintWriter) = this(Some(in0), out)
   def this() = this(None, new JPrintWriter(Console.out, true))
-
-  override def createInterpreter(): Unit = {
-    intp = new SparkILoopInterpreter(settings, out)
-  }
 
   val initializationCommands: Seq[String] = Seq(
     """
@@ -76,7 +69,7 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
   def initializeSpark() {
     intp.beQuietDuring {
       savingReplayStack { // remove the commands from session history.
-        initializationCommands.foreach(processLine)
+        initializationCommands.foreach(command)
       }
     }
   }
@@ -102,13 +95,13 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
   override def commands: List[LoopCommand] = standardCommands
 
   /**
-   * We override `loadFiles` because we need to initialize Spark *before* the REPL
+   * We override `createInterpreter` because we need to initialize Spark *before* the REPL
    * sees any files, so that the Spark context is visible in those files. This is a bit of a
    * hack, but there isn't another hook available to us at this point.
    */
-  override def loadFiles(settings: Settings): Unit = {
+  override def createInterpreter(): Unit = {
+    super.createInterpreter()
     initializeSpark()
-    super.loadFiles(settings)
   }
 
   override def resetCommand(line: String): Unit = {
