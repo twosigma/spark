@@ -24,8 +24,8 @@ import java.nio.channels.Channels
 import scala.util.control.NonFatal
 
 import org.apache.hadoop.fs.{FileSystem, Path}
-import org.apache.xbean.asm5._
-import org.apache.xbean.asm5.Opcodes._
+import org.apache.xbean.asm6._
+import org.apache.xbean.asm6.Opcodes._
 
 import org.apache.spark.{SparkConf, SparkEnv}
 import org.apache.spark.deploy.SparkHadoopUtil
