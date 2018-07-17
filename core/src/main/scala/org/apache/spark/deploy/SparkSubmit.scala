@@ -78,7 +78,7 @@ object SparkSubmit extends CommandLineUtils with Logging {
   private val MESOS = 4
   private val LOCAL = 8
   private val KUBERNETES = 16
-  private val COOK = 32 
+  private val COOK = 32
   private val ALL_CLUSTER_MGRS = YARN | STANDALONE | MESOS | COOK | LOCAL | KUBERNETES
 
   // Deploy modes
@@ -597,7 +597,7 @@ object SparkSubmit extends CommandLineUtils with Logging {
       // Other options
       OptionAssigner(args.executorCores, STANDALONE | YARN | KUBERNETES, ALL_DEPLOY_MODES,
         confKey = "spark.executor.cores"),
-      OptionAssigner(args.executorMemory, STANDALONE | MESOS | COOK | YARN | KUBERNETES, 
+      OptionAssigner(args.executorMemory, STANDALONE | MESOS | COOK | YARN | KUBERNETES,
         ALL_DEPLOY_MODES, confKey = "spark.executor.memory"),
       OptionAssigner(args.totalExecutorCores, STANDALONE | MESOS | KUBERNETES, ALL_DEPLOY_MODES,
         confKey = "spark.cores.max"),
@@ -606,7 +606,7 @@ object SparkSubmit extends CommandLineUtils with Logging {
       OptionAssigner(args.jars, LOCAL, CLIENT, confKey = "spark.jars"),
       OptionAssigner(args.jars, STANDALONE | MESOS | KUBERNETES, ALL_DEPLOY_MODES,
         confKey = "spark.jars"),
-      OptionAssigner(args.driverMemory, STANDALONE | MESOS | YARN | COOK | KUBERNETES, 
+      OptionAssigner(args.driverMemory, STANDALONE | MESOS | YARN | COOK | KUBERNETES,
         CLUSTER, confKey = "spark.driver.memory"),
       OptionAssigner(args.driverCores, STANDALONE | MESOS | YARN | KUBERNETES, CLUSTER,
         confKey = "spark.driver.cores"),
