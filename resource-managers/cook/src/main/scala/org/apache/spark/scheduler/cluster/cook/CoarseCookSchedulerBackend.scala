@@ -30,6 +30,7 @@ import scala.util.{Failure, Success, Try}
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import com.twosigma.cook.jobclient.{
+  Group,
   Job,
   JobClient,
   JobListener => CJobListener
@@ -217,7 +218,7 @@ class CoarseCookSchedulerBackend(
   override def applicationAttemptId(): Option[String] = Some(applicationId())
 
   // Idempotent
-  private def createJob(cores: Int, jobUUID: UUID, executorId: String): Job = {
+  private def createJob(cores: Int, group : Group, jobUUID: UUID, executorId: String): Job = {
     import CoarseCookSchedulerBackend.fetchURI
 
     val fakeOffer = Offer
@@ -324,7 +325,7 @@ class CoarseCookSchedulerBackend(
         Seq("set", commandString) ++
         cleanup
 
-    val builder = new Job.Builder()
+    var builder = new Job.Builder()
       .setUUID(jobUUID)
       .setName(schedulerContext.cookJobNamePrefix)
       .setCommand(commandSeq.mkString("; "))
@@ -334,6 +335,12 @@ class CoarseCookSchedulerBackend(
       // The following two setting ensure each Cook job has only 1 instance.
       .disableMeaCulpaRetries()
       .setRetries(1)
+
+    // If we're allocating a static cluster, make a single group to help cook do group
+    // scheduling optimization and get them launched together.
+    if (!schedulerContext.isDynamicAllocationEnabled) {
+      builder = builder.setGroup(group)
+    }
 
     schedulerContext.executorCookContainerOption.foreach { container =>
       builder.setContainer(new JSONObject(container))
@@ -468,12 +475,14 @@ class CoarseCookSchedulerBackend(
     if (shouldRequestExecutors()) {
       val requestedExecutors = executorLimit - totalExecutorsRequested
 
+      val group = new Group.Builder().setUUID(JobClient.makeTemporalUUID()).build()
+
       if (requestedExecutors > 0) {
         val executorIdAndJob = (1 to requestedExecutors).map { _ =>
           val jobUUID = JobClient.makeTemporalUUID()
           val executorId = mesosSchedulerBackend.newMesosTaskId()
           val job =
-            createJob(schedulerContext.coresPerCookJob, jobUUID, executorId)
+            createJob(schedulerContext.coresPerCookJob, group, jobUUID, executorId)
           (executorId, job)
         }
 
