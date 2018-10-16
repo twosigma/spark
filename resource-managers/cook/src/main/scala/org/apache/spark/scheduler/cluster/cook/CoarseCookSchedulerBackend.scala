@@ -470,7 +470,7 @@ class CoarseCookSchedulerBackend(
 
       if (requestedExecutors > 0) {
         val executorIdAndJob = (1 to requestedExecutors).map { _ =>
-          val jobUUID = UUID.randomUUID()
+          val jobUUID = JobClient.makeTemporalUUID()
           val executorId = mesosSchedulerBackend.newMesosTaskId()
           val job =
             createJob(schedulerContext.coresPerCookJob, jobUUID, executorId)
