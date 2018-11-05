@@ -217,8 +217,11 @@ class CoarseCookSchedulerBackend(
 
   override def applicationAttemptId(): Option[String] = Some(applicationId())
 
-  // Idempotent
-  private def createJob(cores: Int, group : Group, jobUUID: UUID, executorId: String): Job = {
+  // Idempotent & Stateless. Assembles the build objects and builds the jobs.
+  // Note that, if specififed, all jobs in the same group must be submitted in the same
+  // Cook HTTP transaction.
+  private def createJob(cores: Int, group : Option[Group],
+                        jobUUID: UUID, executorId: String): Job = {
     import CoarseCookSchedulerBackend.fetchURI
 
     val fakeOffer = Offer
@@ -336,10 +339,8 @@ class CoarseCookSchedulerBackend(
       .disableMeaCulpaRetries()
       .setRetries(1)
 
-    // If we're allocating a static cluster, make a single group to help cook do group
-    // scheduling optimization and get them launched together.
-    if (!schedulerContext.isDynamicAllocationEnabled) {
-      builder = builder.setGroup(group)
+    if (group.isDefined) {
+      builder = builder.setGroup(group.get)
     }
 
     schedulerContext.executorCookContainerOption.foreach { container =>
@@ -475,7 +476,17 @@ class CoarseCookSchedulerBackend(
     if (shouldRequestExecutors()) {
       val requestedExecutors = executorLimit - totalExecutorsRequested
 
-      val group = new Group.Builder().setUUID(JobClient.makeTemporalUUID()).build()
+      // If we're allocating a static cluster, make a single group to help cook do group
+      // scheduling optimization and get them launched together.
+      val group : Option[Group] =
+        if (schedulerContext.isDynamicAllocationEnabled) {
+          None
+        } else {
+          // Cook does not let groups be re-used, so create a unique one.
+          // We'll still be correct if this object gets re-used
+          // (e.g., relaunch on a worker failure) because we'll have a new UUID.
+          Some(new Group.Builder().setUUID(JobClient.makeTemporalUUID()).build())
+        }
 
       if (requestedExecutors > 0) {
         val executorIdAndJob = (1 to requestedExecutors).map { _ =>
