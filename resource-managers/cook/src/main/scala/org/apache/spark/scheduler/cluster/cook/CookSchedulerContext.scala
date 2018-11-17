@@ -46,6 +46,8 @@ case class CookSchedulerContext(
 
   val SPARK_EXECUTOR_COOK_CONTAINER = "spark.executor.cook.container"
 
+  val SPARK_EXECUTOR_COOK_POOL = "spark.executor.cook.pool"
+
   val PRINCIPALS_THAT_CAN_VIEW = "principalsThatCanView"
 
   val SPARK_EXECUTOR_COOK_PRINCIPALS_THAT_CAN_VIEW =
@@ -82,6 +84,9 @@ case class CookSchedulerContext(
 
   val executorCookContainerOption: Option[String] =
     conf.getOption(SPARK_EXECUTOR_COOK_CONTAINER)
+
+  val executorCookPoolOption: Option[String] =
+    conf.getOption(SPARK_EXECUTOR_COOK_POOL)
 
   val executorKeyStoreURIOption: Option[String] =
     conf.getOption(SPARK_EXECUTOR_KEY_STORE_FILENAME)

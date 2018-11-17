@@ -174,11 +174,12 @@ class CoarseCookSchedulerBackend(
   private[this] val jobClient = new JobClient.Builder()
     .setHost(cookHost)
     .setPort(cookPort)
-    .setEndpoint("rawscheduler")
+    .setEndpoint("jobs")
     .setStatusUpdateInterval(10)
     .setBatchRequestSize(24)
     .setKerberosAuth()
     .build()
+
 
   private[this] val jobListener = new CJobListener {
 
@@ -337,6 +338,10 @@ class CoarseCookSchedulerBackend(
 
     schedulerContext.executorCookContainerOption.foreach { container =>
       builder.setContainer(new JSONObject(container))
+    }
+
+    schedulerContext.executorCookPoolOption.foreach { pool =>
+      builder.setPool(pool)
     }
 
     conf
