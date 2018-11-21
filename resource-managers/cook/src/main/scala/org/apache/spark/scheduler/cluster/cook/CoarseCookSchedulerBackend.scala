@@ -340,7 +340,7 @@ class CoarseCookSchedulerBackend(
       builder.setContainer(new JSONObject(container))
     }
 
-    schedulerContext.executorCookPoolOption.foreach { pool =>
+    schedulerContext.cookPoolOption.foreach { pool =>
       builder.setPool(pool)
     }
 
