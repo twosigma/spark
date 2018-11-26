@@ -328,7 +328,7 @@ class CoarseCookSchedulerBackend(
         Seq("set", commandString) ++
         cleanup
 
-    var builder = new Job.Builder()
+    val builder = new Job.Builder()
       .setUUID(jobUUID)
       .setName(schedulerContext.cookJobNamePrefix)
       .setCommand(commandSeq.mkString("; "))
@@ -339,9 +339,7 @@ class CoarseCookSchedulerBackend(
       .disableMeaCulpaRetries()
       .setRetries(1)
 
-    if (group.isDefined) {
-      builder = builder.setGroup(group.get)
-    }
+    group.foreach(builder.setGroup(_))
 
     schedulerContext.executorCookContainerOption.foreach { container =>
       builder.setContainer(new JSONObject(container))
