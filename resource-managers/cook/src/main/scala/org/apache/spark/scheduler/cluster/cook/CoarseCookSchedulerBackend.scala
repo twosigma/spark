@@ -30,6 +30,7 @@ import scala.util.{Failure, Success, Try}
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import com.twosigma.cook.jobclient.{
+  Group,
   Job,
   JobClient,
   JobListener => CJobListener
@@ -216,8 +217,11 @@ class CoarseCookSchedulerBackend(
 
   override def applicationAttemptId(): Option[String] = Some(applicationId())
 
-  // Idempotent
-  private def createJob(cores: Int, jobUUID: UUID, executorId: String): Job = {
+  // Idempotent & Stateless. Assembles the build objects and builds the jobs.
+  // Note that, if specififed, all jobs in the same group must be submitted in the same
+  // Cook HTTP transaction.
+  private def createJob(cores: Int, group : Option[Group],
+                        jobUUID: UUID, executorId: String): Job = {
     import CoarseCookSchedulerBackend.fetchURI
 
     val fakeOffer = Offer
@@ -334,6 +338,8 @@ class CoarseCookSchedulerBackend(
       // The following two setting ensure each Cook job has only 1 instance.
       .disableMeaCulpaRetries()
       .setRetries(1)
+
+    group.foreach(builder.setGroup(_))
 
     schedulerContext.executorCookContainerOption.foreach { container =>
       builder.setContainer(new JSONObject(container))
@@ -468,12 +474,24 @@ class CoarseCookSchedulerBackend(
     if (shouldRequestExecutors()) {
       val requestedExecutors = executorLimit - totalExecutorsRequested
 
+      // If we're allocating a static cluster, make a single group to help cook do group
+      // scheduling optimization and get them launched together.
+      val group : Option[Group] =
+        if (schedulerContext.isDynamicAllocationEnabled) {
+          None
+        } else {
+          // Cook does not let groups be re-used, so create a unique one.
+          // We'll still be correct if this object gets re-used
+          // (e.g., relaunch on a worker failure) because we'll have a new UUID.
+          Some(new Group.Builder().setUUID(JobClient.makeTemporalUUID()).build())
+        }
+
       if (requestedExecutors > 0) {
         val executorIdAndJob = (1 to requestedExecutors).map { _ =>
-          val jobUUID = UUID.randomUUID()
+          val jobUUID = JobClient.makeTemporalUUID()
           val executorId = mesosSchedulerBackend.newMesosTaskId()
           val job =
-            createJob(schedulerContext.coresPerCookJob, jobUUID, executorId)
+            createJob(schedulerContext.coresPerCookJob, group, jobUUID, executorId)
           (executorId, job)
         }
 
