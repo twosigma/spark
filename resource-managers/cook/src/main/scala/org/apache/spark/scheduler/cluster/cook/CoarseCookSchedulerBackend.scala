@@ -346,10 +346,6 @@ class CoarseCookSchedulerBackend(
       builder.setContainer(new JSONObject(container))
     }
 
-    schedulerContext.cookPoolOption.foreach { pool =>
-      builder.setPool(pool)
-    }
-
     conf
       .getOption(schedulerContext.SPARK_EXECUTOR_COOK_PRINCIPALS_THAT_CAN_VIEW)
       .foreach(builder.addLabel(schedulerContext.PRINCIPALS_THAT_CAN_VIEW, _))
@@ -501,8 +497,10 @@ class CoarseCookSchedulerBackend(
         }
 
         Try[Unit](
-          jobClient
-            .submit(executorIdAndJob.map(_._2).asJava, jobListener)) match {
+          if (schedulerContext.cookPoolOption.isEmpty)
+            jobClient.submit(executorIdAndJob.map(_._2).asJava, jobListener)
+          else
+            jobClient.submit(executorIdAndJob.map(_._2).asJava, schedulerContext.cookPoolOption.get, Listener)) match {
           case Failure(e) =>
             logWarning(
               s"Failed to request executors from Cook. ${executorStatusMessage()}",
