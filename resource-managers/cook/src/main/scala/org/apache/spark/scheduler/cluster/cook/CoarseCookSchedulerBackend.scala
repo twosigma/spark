@@ -500,7 +500,7 @@ class CoarseCookSchedulerBackend(
           if (schedulerContext.cookPoolOption.isEmpty)
             jobClient.submit(executorIdAndJob.map(_._2).asJava, jobListener)
           else
-            jobClient.submit(executorIdAndJob.map(_._2).asJava, schedulerContext.cookPoolOption.get, Listener)) match {
+            jobClient.submit(executorIdAndJob.map(_._2).asJava, schedulerContext.cookPoolOption.get, jobListener)) match {
           case Failure(e) =>
             logWarning(
               s"Failed to request executors from Cook. ${executorStatusMessage()}",
